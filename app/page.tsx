@@ -1,7 +1,7 @@
 import EquityCurve from "@/components/EquityCurve";
-import { fetchSheetRows, GIDS, isNegative } from "@/lib/sheet";
+import { fetchSheetRows, TABS, isNegative } from "@/lib/sheet";
 import {
-  parseDashboard,
+  computeDashboard,
   parseHoldings,
   parseMomentum,
   parseRebalance,
@@ -46,7 +46,7 @@ function StatBlock({ title, rows }: { title: string; rows: KV[] }) {
 
 export default async function Home() {
   let error: string | null = null;
-  let dashboard: ReturnType<typeof parseDashboard> | null = null;
+  let dashboard: ReturnType<typeof computeDashboard> | null = null;
   let holdings: ReturnType<typeof parseHoldings> | null = null;
   let momentum: ReturnType<typeof parseMomentum> = [];
   let rebalance: ReturnType<typeof parseRebalance> | null = null;
@@ -54,18 +54,17 @@ export default async function Home() {
   let fetchedAt = "";
 
   try {
-    const [dashRows, holdRows, momRows, rebalRows, navRows] = await Promise.all([
-      fetchSheetRows(GIDS.dashboard),
-      fetchSheetRows(GIDS.holdings),
-      fetchSheetRows(GIDS.momentum),
-      fetchSheetRows(GIDS.rebalance),
-      fetchSheetRows(GIDS.nav),
+    const [holdRows, momRows, rebalRows, navRows] = await Promise.all([
+      fetchSheetRows(TABS.holdings),
+      fetchSheetRows(TABS.momentum),
+      fetchSheetRows(TABS.rebalance),
+      fetchSheetRows(TABS.nav),
     ]);
-    dashboard = parseDashboard(dashRows);
     holdings = parseHoldings(holdRows);
     momentum = parseMomentum(momRows);
     rebalance = parseRebalance(rebalRows);
     nav = parseNav(navRows);
+    dashboard = computeDashboard(holdings, rebalance, momentum);
     fetchedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
   } catch (e: any) {
     error = e?.message ?? String(e);
@@ -119,7 +118,7 @@ export default async function Home() {
                 { label: "NAV", value: dashboard.nav },
                 { label: "Total P&L", value: dashboard.totalPnl },
                 { label: "Today's P&L", value: dashboard.todayPnl },
-                { label: "Return vs Nifty 500", value: dashboard.returnVsBenchmark },
+                { label: "Portfolio Return", value: dashboard.portfolioReturn },
               ].map((h) => (
                 <div
                   key={h.label}

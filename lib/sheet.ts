@@ -3,21 +3,25 @@
 // no copy of the data anywhere else. Whatever the sheet shows is what the
 // dashboard shows, a request later.
 //
-// Uses the plain CSV export endpoint, which works for any sheet shared as
-// "Anyone with the link -- Viewer" without needing Publish to web.
+// Fetched by TAB NAME via the gviz CSV endpoint, not by gid: every time
+// buildPortfolio() re-runs in the sheet (OVERWRITE = true) it deletes and
+// recreates every tab, which hands out fresh gids -- a gid-keyed fetch here
+// would break on every rebuild. The tab name is stable across that, so
+// resolve by name instead. Works for any sheet shared as "Anyone with the
+// link -- Viewer", no Publish to web needed.
 
 const SHEET_ID = "1coh8Lbbw-K1dpZm5OPHhVtFcWZbAATGu-5-9Bt2KXac";
 
-export const GIDS = {
-  dashboard: "1089729962",
-  holdings: "1742658077",
-  rebalance: "1023512293",
-  momentum: "1651483667",
-  nav: "1492391077",
+export const TABS = {
+  dashboard: "Dashboard",
+  holdings: "Holdings",
+  rebalance: "Rebalance",
+  momentum: "Momentum",
+  nav: "NAV",
 } as const;
 
-function csvUrl(gid: string): string {
-  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+function csvUrl(sheetName: string): string {
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
 }
 
 // Minimal RFC4180 CSV parser -- handles quoted fields with embedded commas,
@@ -66,17 +70,17 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-export async function fetchSheetRows(gid: string): Promise<string[][]> {
-  const res = await fetch(csvUrl(gid), { cache: "no-store" });
+export async function fetchSheetRows(sheetName: string): Promise<string[][]> {
+  const res = await fetch(csvUrl(sheetName), { cache: "no-store" });
   if (!res.ok) {
-    throw new Error(`Sheet fetch failed (HTTP ${res.status}) for tab gid ${gid}`);
+    throw new Error(`Sheet fetch failed (HTTP ${res.status}) for tab "${sheetName}"`);
   }
   const text = await res.text();
   // Google returns an HTML sign-in page (not CSV) if the sheet isn't
   // actually public -- surface that clearly instead of parsing garbage.
   if (text.trimStart().startsWith("<")) {
     throw new Error(
-      `Sheet gid ${gid} did not return CSV -- check it is shared "Anyone with the link -- Viewer"`
+      `Tab "${sheetName}" did not return CSV -- check it is shared "Anyone with the link -- Viewer"`
     );
   }
   return parseCsv(text);
