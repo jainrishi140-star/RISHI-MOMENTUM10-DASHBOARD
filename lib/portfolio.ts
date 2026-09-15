@@ -186,24 +186,19 @@ export interface NavPoint {
   date: string;
   nav: number;
   portfolioReturn: number;
-  benchmarkReturn: number;
 }
 
-export function parseNav(rows: string[][]): NavPoint[] {
-  const headerIdx = findRow(rows, "Date");
-  const out: NavPoint[] = [];
-  for (let r = headerIdx + 1; r < rows.length; r++) {
-    const date = cell(rows, r, 0);
-    const navStr = cell(rows, r, 3);
-    if (!date || !navStr) continue;
-    out.push({
-      date,
-      nav: toNumber(navStr),
-      portfolioReturn: toNumber(cell(rows, r, 5)),
-      benchmarkReturn: toNumber(cell(rows, r, 7)),
-    });
-  }
-  return out;
+// The equity curve does NOT read the sheet's own NAV tab -- that requires
+// installDailySnapshot() to have been run in Apps Script (owner-only, needs
+// Google account permissions we can't grant remotely). Instead
+// data/nav-history.json is appended to once a day by
+// .github/workflows/daily-nav-snapshot.yml, using only this repo's own
+// GitHub Actions token -- no Google auth involved at all.
+export function buildNavPoints(history: { date: string; nav: number }[]): NavPoint[] {
+  return history
+    .slice()
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .map((p) => ({ date: p.date, nav: p.nav, portfolioReturn: p.nav / START_CAPITAL - 1 }));
 }
 
 export interface DashboardData {

@@ -17,8 +17,20 @@ export const TABS = {
   holdings: "Holdings",
   rebalance: "Rebalance",
   momentum: "Momentum",
-  nav: "NAV",
 } as const;
+
+// The equity curve reads from this repo's own data/nav-history.json instead
+// of the sheet's NAV tab -- see the note in lib/portfolio.ts. Fetched raw
+// from GitHub so it's always current, independent of which Vercel deploy is
+// live.
+const NAV_HISTORY_URL =
+  "https://raw.githubusercontent.com/jainrishi140-star/RISHI-MOMENTUM10-DASHBOARD/main/data/nav-history.json";
+
+export async function fetchNavHistory(): Promise<{ date: string; nav: number }[]> {
+  const res = await fetch(NAV_HISTORY_URL, { cache: "no-store" });
+  if (!res.ok) throw new Error(`NAV history fetch failed (HTTP ${res.status})`);
+  return res.json();
+}
 
 function csvUrl(sheetName: string): string {
   return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;

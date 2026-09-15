@@ -1,11 +1,11 @@
 import EquityCurve from "@/components/EquityCurve";
-import { fetchSheetRows, TABS, isNegative } from "@/lib/sheet";
+import { fetchSheetRows, fetchNavHistory, TABS, isNegative } from "@/lib/sheet";
 import {
   computeDashboard,
   parseHoldings,
   parseMomentum,
   parseRebalance,
-  parseNav,
+  buildNavPoints,
   KV,
 } from "@/lib/portfolio";
 
@@ -50,24 +50,30 @@ export default async function Home() {
   let holdings: ReturnType<typeof parseHoldings> | null = null;
   let momentum: ReturnType<typeof parseMomentum> = [];
   let rebalance: ReturnType<typeof parseRebalance> | null = null;
-  let nav: ReturnType<typeof parseNav> = [];
+  let nav: ReturnType<typeof buildNavPoints> = [];
   let fetchedAt = "";
 
   try {
-    const [holdRows, momRows, rebalRows, navRows] = await Promise.all([
+    const [holdRows, momRows, rebalRows] = await Promise.all([
       fetchSheetRows(TABS.holdings),
       fetchSheetRows(TABS.momentum),
       fetchSheetRows(TABS.rebalance),
-      fetchSheetRows(TABS.nav),
     ]);
     holdings = parseHoldings(holdRows);
     momentum = parseMomentum(momRows);
     rebalance = parseRebalance(rebalRows);
-    nav = parseNav(navRows);
     dashboard = computeDashboard(holdings, rebalance, momentum);
     fetchedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
   } catch (e: any) {
     error = e?.message ?? String(e);
+  }
+
+  // Independent of the sheet fetch above -- a hiccup here shouldn't take
+  // down the rest of the dashboard.
+  try {
+    nav = buildNavPoints(await fetchNavHistory());
+  } catch {
+    nav = [];
   }
 
   return (
