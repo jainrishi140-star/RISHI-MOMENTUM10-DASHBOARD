@@ -1,11 +1,24 @@
-// Appends today's NAV to data/nav-history.json, computed from the Holdings
-// tab of the Google Sheet -- the same way lib/portfolio.ts does it. Run
-// daily by .github/workflows/daily-nav-snapshot.yml (no Google Apps Script
-// dependency, no Google account permissions needed).
+// Appends today's NAV to each strategy's data/nav-history-*.json, computed
+// from that sheet's Holdings tab -- the same way lib/portfolio.ts does it.
+// Run daily by .github/workflows/daily-nav-snapshot.yml (no Google Apps
+// Script dependency, no Google account permissions needed).
 
-const SHEET_ID = "1coh8Lbbw-K1dpZm5OPHhVtFcWZbAATGu-5-9Bt2KXac";
+import fs from "node:fs/promises";
+
 const START_CAPITAL = 10_000_000;
-const HISTORY_PATH = new URL("../data/nav-history.json", import.meta.url);
+
+const STRATEGIES = [
+  {
+    name: "mom10",
+    sheetId: "1coh8Lbbw-K1dpZm5OPHhVtFcWZbAATGu-5-9Bt2KXac", // Top 10 ER MOM PORTFOLIO
+    historyPath: new URL("../data/nav-history-mom10.json", import.meta.url),
+  },
+  {
+    name: "mom20",
+    sheetId: "1yU6YSzZcyAHlhH-4aFlrVNaiDOcT5afdvar1yuAaQCY", // 20/60 mom portfolio
+    historyPath: new URL("../data/nav-history-mom20.json", import.meta.url),
+  },
+];
 
 function parseCsv(text) {
   const rows = [];
@@ -37,8 +50,8 @@ function toNumber(s) {
   return Number.isFinite(n) ? n : 0;
 }
 
-async function fetchHoldingsTotal() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Holdings`;
+async function fetchHoldingsTotal(sheetId) {
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Holdings`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Holdings fetch failed: HTTP ${res.status}`);
   const rows = parseCsv(await res.text());
@@ -51,8 +64,8 @@ async function fetchHoldingsTotal() {
   };
 }
 
-async function main() {
-  const { costBasis, currentValue } = await fetchHoldingsTotal();
+async function snapshotOne(strategy) {
+  const { costBasis, currentValue } = await fetchHoldingsTotal(strategy.sheetId);
   const cash = START_CAPITAL - costBasis;
   const nav = cash + currentValue;
 
@@ -61,8 +74,7 @@ async function main() {
 
   let history = [];
   try {
-    const raw = await import("node:fs/promises").then((fs) => fs.readFile(HISTORY_PATH, "utf8"));
-    history = JSON.parse(raw);
+    history = JSON.parse(await fs.readFile(strategy.historyPath, "utf8"));
   } catch {
     history = [];
   }
@@ -73,9 +85,14 @@ async function main() {
   else history.push(point);
   history.sort((a, b) => (a.date < b.date ? -1 : 1));
 
-  const fs = await import("node:fs/promises");
-  await fs.writeFile(HISTORY_PATH, JSON.stringify(history, null, 2) + "\n");
-  console.log(`Snapshot ${today}: NAV ${nav.toFixed(2)} (${history.length} points total)`);
+  await fs.writeFile(strategy.historyPath, JSON.stringify(history, null, 2) + "\n");
+  console.log(`[${strategy.name}] Snapshot ${today}: NAV ${nav.toFixed(2)} (${history.length} points total)`);
+}
+
+async function main() {
+  for (const strategy of STRATEGIES) {
+    await snapshotOne(strategy);
+  }
 }
 
 main().catch((e) => {

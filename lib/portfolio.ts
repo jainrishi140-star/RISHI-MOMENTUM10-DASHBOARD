@@ -217,7 +217,8 @@ export interface DashboardData {
 export function computeDashboard(
   holdings: { rows: HoldingRow[]; total: HoldingRow | null },
   rebalance: { nextDate: string; rows: RebalanceRow[] },
-  momentum: MomentumRow[]
+  momentum: MomentumRow[],
+  overweightThreshold = 0.15 // 15% on the 10-stock book; the 20-stock book uses 8% (Settings!OVERWEIGHT)
 ): DashboardData {
   const total = holdings.total;
   const costBasis = total ? toNumber(total.costBasis) : 0;
@@ -248,7 +249,7 @@ export function computeDashboard(
 
   const attentionNoPrice = holdings.rows.filter((h) => !h.cmp).map((h) => h.ticker.replace("NSE:", ""));
   const attentionOverweight = holdings.rows
-    .filter((h) => toFraction(h.actualWt) > 0.15)
+    .filter((h) => toFraction(h.actualWt) > overweightThreshold)
     .map((h) => h.ticker.replace("NSE:", ""));
   const attentionWeak = momentum.filter((m) => m.health === "WEAK").map((m) => m.ticker.replace("NSE:", ""));
 
@@ -283,7 +284,7 @@ export function computeDashboard(
     ],
     attention: [
       { label: "No price from GOOGLEFINANCE", value: attentionNoPrice.join(", ") || "None" },
-      { label: "Overweight (> 15%)", value: attentionOverweight.join(", ") || "None" },
+      { label: `Overweight (> ${(overweightThreshold * 100).toFixed(0)}%)`, value: attentionOverweight.join(", ") || "None" },
       { label: "Momentum WEAK", value: attentionWeak.join(", ") || "None" },
     ],
   };

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RISHI Momentum-10 — Forward Test",
-  description: "10-stock equal-weight momentum forward-test portfolio, live from Google Sheets",
+  title: "RISHI Momentum — Forward Test",
+  description: "Equal-weight momentum forward-test portfolios (10-stock and 20-stock), live from Google Sheets",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
