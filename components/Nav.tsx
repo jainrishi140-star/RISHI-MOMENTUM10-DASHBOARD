@@ -3,6 +3,7 @@ import Link from "next/link";
 const ITEMS = [
   { href: "/", label: "MOM10 · 10-stock" },
   { href: "/mom20", label: "MOM20 · 20-stock" },
+  { href: "/star-rsi-sharpe", label: "STAR RSI SHARPE" },
 ];
 
 export default function Nav({ current }: { current: string }) {

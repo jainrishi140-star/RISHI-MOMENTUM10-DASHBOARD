@@ -18,6 +18,11 @@ const STRATEGIES = [
     sheetId: "1yU6YSzZcyAHlhH-4aFlrVNaiDOcT5afdvar1yuAaQCY", // 20/60 mom portfolio
     historyPath: new URL("../data/nav-history-mom20.json", import.meta.url),
   },
+  {
+    name: "star-rsi-sharpe",
+    sheetId: "1QDV04yw1Gb-hm0Y-K1NiDkyp-zyHm3jJQrOx-zZQTvU", // STAR RSI SHARPE
+    historyPath: new URL("../data/nav-history-star-rsi-sharpe.json", import.meta.url),
+  },
 ];
 
 function parseCsv(text) {
