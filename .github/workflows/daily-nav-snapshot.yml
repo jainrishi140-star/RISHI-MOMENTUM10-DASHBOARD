@@ -18,9 +18,11 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/snapshot-nav.mjs
+      - run: node scripts/snapshot-benchmarks.mjs
+        continue-on-error: true
       - run: |
           git config user.name "nav-snapshot-bot"
           git config user.email "actions@github.com"
-          git add data/nav-history-mom10.json data/nav-history-mom20.json data/nav-history-star-rsi-sharpe.json
+          git add data/nav-history-mom10.json data/nav-history-mom20.json data/nav-history-star-rsi-sharpe.json data/benchmarks.json
           git diff --cached --quiet && echo "No change" || git commit -m "Daily NAV snapshot $(date -u +%F)"
           git push
