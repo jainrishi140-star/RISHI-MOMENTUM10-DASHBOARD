@@ -5,6 +5,14 @@
 const REPO_RAW_BASE =
   "https://raw.githubusercontent.com/jainrishi140-star/RISHI-MOMENTUM10-DASHBOARD/main/data";
 
+// Last benchmark trading day strictly before `date` (Nifty 500 calendar).
+export async function priorTradingDay(date: string): Promise<string | undefined> {
+  const res = await fetch(`${REPO_RAW_BASE}/benchmarks.json`, { cache: "no-store" });
+  if (!res.ok) return undefined;
+  const raw: Record<string, { date: string }[]> = await res.json();
+  return (raw.nifty500 ?? []).map((p) => p.date).filter((d) => d < date).sort().at(-1);
+}
+
 export interface BenchmarkSeries {
   key: string;
   label: string;
@@ -19,6 +27,9 @@ const DEFS = [
   { key: "mosl", label: "MOSL Active Momentum Fund", color: "var(--series-4)", dash: "2 3" },
 ] as const;
 
+// startDate is the 0% anchor. If the strategy's first snapshot is already off
+// its starting capital (money went to work before the first snapshot), pass the
+// PRIOR trading day so benchmarks are measured over the same window.
 export async function fetchBenchmarks(startDate: string | undefined): Promise<BenchmarkSeries[]> {
   if (!startDate) return [];
   const res = await fetch(`${REPO_RAW_BASE}/benchmarks.json`, { cache: "no-store" });

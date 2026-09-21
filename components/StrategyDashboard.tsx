@@ -1,5 +1,5 @@
 import EquityCurve from "@/components/EquityCurve";
-import { fetchBenchmarks, type BenchmarkSeries } from "@/lib/benchmarks";
+import { fetchBenchmarks, priorTradingDay, type BenchmarkSeries } from "@/lib/benchmarks";
 import Nav from "@/components/Nav";
 import { fetchSheetRows, fetchNavHistory, TABS, isNegative } from "@/lib/sheet";
 import {
@@ -89,6 +89,11 @@ export default async function StrategyDashboard({
     nav = [];
   }
   try {
+    // First snapshot already off starting capital => anchor everything at the prior close.
+    if (nav.length && Math.abs(nav[0].portfolioReturn) > 1e-9) {
+      const base = await priorTradingDay(nav[0].date);
+      if (base) nav = [{ date: base, nav: nav[0].nav / (1 + nav[0].portfolioReturn), portfolioReturn: 0 }, ...nav];
+    }
     benchmarks = await fetchBenchmarks(nav[0]?.date);
   } catch {
     benchmarks = [];
