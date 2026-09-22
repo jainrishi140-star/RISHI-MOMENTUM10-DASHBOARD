@@ -27,7 +27,7 @@ jobs:
       - run: |
           git config user.name "nav-snapshot-bot"
           git config user.email "actions@github.com"
-          git add data/nav-history-mom10.json data/nav-history-mom20.json data/nav-history-star-rsi-sharpe.json data/benchmarks.json
+          git add data/nav-history-mom10.json data/nav-history-mom20.json data/nav-history-star-rsi-sharpe.json data/nav-history-rishi-viraj.json data/benchmarks.json
           git diff --cached --quiet && echo "No change" || git commit -m "Daily NAV snapshot $(date -u +%F)"
           git push
 

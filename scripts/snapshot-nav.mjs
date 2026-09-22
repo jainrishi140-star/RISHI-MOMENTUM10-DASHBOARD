@@ -23,6 +23,11 @@ const STRATEGIES = [
     sheetId: "1QDV04yw1Gb-hm0Y-K1NiDkyp-zyHm3jJQrOx-zZQTvU", // STAR RSI SHARPE
     historyPath: new URL("../data/nav-history-star-rsi-sharpe.json", import.meta.url),
   },
+  {
+    name: "rishi-viraj",
+    sheetId: "1Ls5COhCkEEEtvFwqWvUxnwpj_NI8OwnIRuP3vK-KPkg", // RISHI x VIRAJ -- 19 COMMON NAMES + CASH
+    historyPath: new URL("../data/nav-history-rishi-viraj.json", import.meta.url),
+  },
 ];
 
 function parseCsv(text) {
