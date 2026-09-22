@@ -217,9 +217,11 @@ export function buildNavPoints(history: { date: string; nav: number }[]): NavPoi
 
 export interface DashboardData {
   nav: string;
+  navRaw: number;
   totalPnl: string;
   todayPnl: string;
   portfolioReturn: string;
+  portfolioReturnRaw: number;
   capitalValue: KV[];
   pnlReturn: KV[];
   riskConcentration: KV[];
@@ -269,9 +271,11 @@ export function computeDashboard(
 
   return {
     nav: formatMoney(nav),
+    navRaw: nav,
     totalPnl: formatMoney(totalPnl),
     todayPnl: formatMoney(dayPnl),
     portfolioReturn: formatPct(portfolioReturn),
+    portfolioReturnRaw: portfolioReturn,
     capitalValue: [
       { label: "Starting Capital", value: formatMoney(START_CAPITAL) },
       { label: "Capital Deployed", value: formatMoney(costBasis) },

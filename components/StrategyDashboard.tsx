@@ -1,3 +1,4 @@
+import AutoRefresh from "@/components/AutoRefresh";
 import EquityCurve from "@/components/EquityCurve";
 import {
   fetchBenchmarks,
@@ -123,6 +124,20 @@ export default async function StrategyDashboard({
     benchmarks = [];
   }
 
+  // Splice in a live point for "today", using the same Holdings-derived NAV
+  // that already powers the hero tiles above (fetched fresh, no-store, on
+  // every request). The daily GitHub Actions snapshot only writes one point
+  // per trading day after close, so without this the curve's last point
+  // would sit frozen at yesterday's close all day; this makes it move with
+  // the sheet's GOOGLEFINANCE prices intraday instead. Replaces today's
+  // snapshot if the Action has already run today, otherwise appends.
+  if (dashboard && nav.length) {
+    const todayIST = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD
+    const livePoint = { date: todayIST, nav: dashboard.navRaw, portfolioReturn: dashboard.portfolioReturnRaw };
+    if (nav[nav.length - 1].date === todayIST) nav = [...nav.slice(0, -1), livePoint];
+    else if (todayIST > nav[nav.length - 1].date) nav = [...nav, livePoint];
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-zinc-50 font-sans dark:bg-black">
       <div
@@ -136,6 +151,7 @@ export default async function StrategyDashboard({
       />
 
       <main className="relative mx-auto max-w-4xl px-6 py-12">
+        <AutoRefresh />
         <Nav current={currentPath} />
 
         <div>
