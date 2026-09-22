@@ -1,5 +1,11 @@
 import EquityCurve from "@/components/EquityCurve";
-import { fetchBenchmarks, priorTradingDay, type BenchmarkSeries } from "@/lib/benchmarks";
+import {
+  fetchBenchmarks,
+  fetchSiblingStrategies,
+  priorTradingDay,
+  type BenchmarkSeries,
+  type SiblingStrategyDef,
+} from "@/lib/benchmarks";
 import Nav from "@/components/Nav";
 import { fetchSheetRows, fetchNavHistory, TABS, isNegative } from "@/lib/sheet";
 import {
@@ -47,6 +53,7 @@ export interface StrategyDashboardProps {
   overweightThreshold: number;
   title: string;
   subtitle: string;
+  siblingStrategies?: SiblingStrategyDef[];
 }
 
 export default async function StrategyDashboard({
@@ -56,6 +63,7 @@ export default async function StrategyDashboard({
   overweightThreshold,
   title,
   subtitle,
+  siblingStrategies = [],
 }: StrategyDashboardProps) {
   let error: string | null = null;
   let dashboard: ReturnType<typeof computeDashboard> | null = null;
@@ -94,7 +102,11 @@ export default async function StrategyDashboard({
       const base = await priorTradingDay(nav[0].date);
       if (base) nav = [{ date: base, nav: nav[0].nav / (1 + nav[0].portfolioReturn), portfolioReturn: 0 }, ...nav];
     }
-    benchmarks = await fetchBenchmarks(nav[0]?.date);
+    const [indexBenchmarks, siblings] = await Promise.all([
+      fetchBenchmarks(nav[0]?.date),
+      fetchSiblingStrategies(siblingStrategies, nav[0]?.date),
+    ]);
+    benchmarks = [...indexBenchmarks, ...siblings];
   } catch {
     benchmarks = [];
   }

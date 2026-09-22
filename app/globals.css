@@ -12,6 +12,8 @@
   --series-2: #d95926; /* orange -- Nifty 500 benchmark */
   --series-3: #4fb477; /* green -- Nifty500 Momentum 50 benchmark */
   --series-4: #c58af9; /* violet -- MOSL Active Momentum Fund benchmark */
+  --series-5: #e6c94b; /* yellow -- MOM10 sibling strategy */
+  --series-6: #5fc8d8; /* cyan -- MOM20 sibling strategy */
   --grid-line: #2a2a28;
   --text-secondary: #c3c2b7;
   --surface-1: #1a1a19;
