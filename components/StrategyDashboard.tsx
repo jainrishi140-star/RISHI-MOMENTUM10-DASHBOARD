@@ -16,6 +16,7 @@ import {
   parseRebalance,
   buildNavPoints,
   parseSheetDate,
+  todayIST,
   KV,
 } from "@/lib/portfolio";
 
@@ -132,10 +133,10 @@ export default async function StrategyDashboard({
   // the sheet's GOOGLEFINANCE prices intraday instead. Replaces today's
   // snapshot if the Action has already run today, otherwise appends.
   if (dashboard && nav.length) {
-    const todayIST = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD
-    const livePoint = { date: todayIST, nav: dashboard.navRaw, portfolioReturn: dashboard.portfolioReturnRaw };
-    if (nav[nav.length - 1].date === todayIST) nav = [...nav.slice(0, -1), livePoint];
-    else if (todayIST > nav[nav.length - 1].date) nav = [...nav, livePoint];
+    const today = todayIST();
+    const livePoint = { date: today, nav: dashboard.navRaw, portfolioReturn: dashboard.portfolioReturnRaw };
+    if (nav[nav.length - 1].date === today) nav = [...nav.slice(0, -1), livePoint];
+    else if (today > nav[nav.length - 1].date) nav = [...nav, livePoint];
   }
 
   return (

@@ -228,6 +228,27 @@ export interface DashboardData {
   attention: KV[];
 }
 
+// Cash + current market value off the Holdings total row -- the same NAV
+// math computeDashboard uses for the hero tiles, factored out so a sibling
+// strategy plotted as a benchmark line (see lib/benchmarks.ts) can compute
+// its own live NAV the same way, from its own Holdings tab.
+export function computeLiveNav(holdings: { rows: HoldingRow[]; total: HoldingRow | null }): {
+  nav: number;
+  portfolioReturn: number;
+} {
+  const total = holdings.total;
+  const costBasis = total ? toNumber(total.costBasis) : 0;
+  const currentValue = total ? toNumber(total.currentValue) : 0;
+  const cash = START_CAPITAL - costBasis;
+  const nav = cash + currentValue;
+  return { nav, portfolioReturn: nav / START_CAPITAL - 1 };
+}
+
+// Today's date in IST as YYYY-MM-DD, matching the nav-history.json date format.
+export function todayIST(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
+
 // Computed from Holdings (a stable, dense table) instead of the Dashboard
 // tab's free-form layout -- see the note at the top of this file.
 export function computeDashboard(
@@ -242,10 +263,9 @@ export function computeDashboard(
   const unrealisedPnl = total ? toNumber(total.unrealisedPnl) : 0;
   const dayPnl = total ? toNumber(total.dayPnl) : 0;
 
+  const { nav, portfolioReturn } = computeLiveNav(holdings);
   const cash = START_CAPITAL - costBasis;
-  const nav = cash + currentValue;
   const totalPnl = nav - START_CAPITAL;
-  const portfolioReturn = nav / START_CAPITAL - 1;
 
   const weights = holdings.rows.map((h) => toFraction(h.actualWt)).filter((w) => w > 0);
   const sortedWeights = [...weights].sort((a, b) => b - a);

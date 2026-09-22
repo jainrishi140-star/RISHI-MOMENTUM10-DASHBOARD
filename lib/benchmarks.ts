@@ -2,6 +2,9 @@
 // own start date. Raw levels/NAVs live in data/benchmarks.json, refreshed by
 // scripts/snapshot-benchmarks.mjs (daily GitHub Action).
 
+import { fetchSheetRows, TABS } from "./sheet";
+import { computeLiveNav, parseHoldings, todayIST } from "./portfolio";
+
 const REPO_RAW_BASE =
   "https://raw.githubusercontent.com/jainrishi140-star/RISHI-MOMENTUM10-DASHBOARD/main/data";
 
@@ -65,6 +68,7 @@ export interface SiblingStrategyDef {
   key: string;
   label: string;
   navHistoryFile: string; // data/nav-history-*.json in this same repo
+  sheetId: string; // sibling's own Google Sheet -- lets us splice ITS live NAV too
   color: string;
   dash?: string;
 }
@@ -74,17 +78,37 @@ export interface SiblingStrategyDef {
 // Each sibling's own NAV history is rebased to ITS ₹1 Cr start capital first
 // (same as buildNavPoints), then rebased again onto the host strategy's
 // startDate, exactly like an index/fund benchmark.
+//
+// Today's point is spliced onto each sibling's series from ITS OWN Holdings
+// tab (live GOOGLEFINANCE prices, no-store) before rebasing -- otherwise
+// these lines would move live on their own page but sit frozen at
+// yesterday's close whenever plotted as a sibling here (they'd only read
+// the daily GitHub Actions snapshot). A sibling fetch failing (sheet down,
+// etc.) falls back to the static history alone rather than dropping the
+// whole line.
 export async function fetchSiblingStrategies(
   defs: SiblingStrategyDef[],
   startDate: string | undefined
 ): Promise<BenchmarkSeries[]> {
   if (!startDate || !defs.length) return [];
+  const today = todayIST();
   const results = await Promise.all(
     defs.map(async (d) => {
       const res = await fetch(`${REPO_RAW_BASE}/${d.navHistoryFile}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`${d.label} NAV history fetch failed (HTTP ${res.status})`);
       const history: { date: string; nav: number }[] = await res.json();
-      const series = history.map((p) => ({ date: p.date, value: p.nav }));
+      let series = history.map((p) => ({ date: p.date, value: p.nav }));
+
+      try {
+        const holdRows = await fetchSheetRows(d.sheetId, TABS.holdings);
+        const { nav } = computeLiveNav(parseHoldings(holdRows));
+        const livePoint = { date: today, value: nav };
+        if (series.length && series[series.length - 1].date === today) series = [...series.slice(0, -1), livePoint];
+        else if (!series.length || today > series[series.length - 1].date) series = [...series, livePoint];
+      } catch {
+        // Live splice failed -- fall through with the static history only.
+      }
+
       return { key: d.key, label: d.label, color: d.color, dash: d.dash, points: rebase(series, startDate) };
     })
   );
