@@ -14,6 +14,7 @@ import {
   parseMomentum,
   parseRebalance,
   buildNavPoints,
+  parseSheetDate,
   KV,
 } from "@/lib/portfolio";
 
@@ -93,6 +94,17 @@ export default async function StrategyDashboard({
   // down the rest of the dashboard.
   try {
     nav = buildNavPoints(await fetchNavHistory(navHistoryFile));
+    // A book that gets rebuilt (OVERWRITE = true) can leave behind daily
+    // snapshots taken against an earlier draft of the sheet -- those predate
+    // the current holdings' own Entry Date and would silently drag the
+    // equity curve's anchor back to a day before the book actually existed.
+    // Holdings' earliest Entry Date is ground truth for when THIS book went
+    // live, so drop any snapshot older than that.
+    const earliestEntry = holdings?.rows
+      .map((h) => parseSheetDate(h.entryDate))
+      .filter((d): d is string => d !== null)
+      .sort()[0];
+    if (earliestEntry) nav = nav.filter((p) => p.date >= earliestEntry);
   } catch {
     nav = [];
   }

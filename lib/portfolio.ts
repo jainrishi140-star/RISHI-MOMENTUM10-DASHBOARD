@@ -18,6 +18,20 @@ export interface KV {
   value: string;
 }
 
+const SHEET_MONTHS: Record<string, string> = {
+  Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+  Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
+};
+
+// Parses the sheet's "17-Sep-2026" Entry Date format to ISO "2026-09-17".
+export function parseSheetDate(s: string): string | null {
+  const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec((s ?? "").trim());
+  if (!m) return null;
+  const mon = SHEET_MONTHS[m[2]];
+  if (!mon) return null;
+  return `${m[3]}-${mon}-${m[1].padStart(2, "0")}`;
+}
+
 function findRow(rows: string[][], matchFirstCell: string): number {
   return rows.findIndex((r) => (r[0] ?? "").trim() === matchFirstCell);
 }
