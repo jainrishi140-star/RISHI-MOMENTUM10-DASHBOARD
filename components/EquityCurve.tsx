@@ -1,3 +1,6 @@
+"use client";
+
+import { useRef, useState } from "react";
 import { NavPoint } from "@/lib/portfolio";
 import type { BenchmarkSeries } from "@/lib/benchmarks";
 
@@ -9,10 +12,15 @@ import type { BenchmarkSeries } from "@/lib/benchmarks";
 export default function EquityCurve({
   points,
   benchmarks = [],
+  fetchedAt,
 }: {
   points: NavPoint[];
   benchmarks?: BenchmarkSeries[];
+  fetchedAt?: string;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   if (points.length < 1) {
     return (
       <div className="flex h-40 items-center justify-center px-4 text-center text-sm text-zinc-500 dark:text-zinc-500">
@@ -44,6 +52,12 @@ export default function EquityCurve({
   const pathFor = (s: { date: string; v: number }[]) =>
     s.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
   const fmt = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+  const fmtDate = (d: string) =>
+    new Date(t(d)).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+  // Nearest value on or before `date` for a (possibly sparser) series.
+  const asOf = (s: { date: string; v: number }[], date: string) =>
+    [...s].reverse().find((p) => p.date <= date) ?? s[0];
 
   const zeroY = y(0);
   const legend = [
@@ -53,38 +67,134 @@ export default function EquityCurve({
       .map((b) => ({ label: b.label, color: b.color, last: b.points[b.points.length - 1].ret * 100 })),
   ];
 
+  const lastPortDate = port[port.length - 1].date;
+  const hover = hoverIdx !== null ? port[hoverIdx] : null;
+  const hoverLabel = hover
+    ? hover.date === lastPortDate && fetchedAt
+      ? `${fetchedAt} IST`
+      : fmtDate(hover.date)
+    : null;
+
+  function handleMove(e: React.MouseEvent<SVGSVGElement>) {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = ((e.clientX - rect.left) / rect.width) * width;
+    let nearest = 0;
+    let nearestDist = Infinity;
+    port.forEach((p, i) => {
+      const d = Math.abs(x(p.date) - mouseX);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = i;
+      }
+    });
+    setHoverIdx(nearest);
+  }
+
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Equity curve vs benchmarks">
-        <line x1={pad} y1={zeroY} x2={width - pad} y2={zeroY} stroke="var(--grid-line)" strokeDasharray="4 4" />
-        <text x={pad} y={height - 8} fill="var(--text-secondary)" fontSize={10}>
-          {points[0].date}
-        </text>
-        <text x={width - pad} y={height - 8} fill="var(--text-secondary)" fontSize={10} textAnchor="end">
-          {new Date(end).toISOString().slice(0, 10)}
-        </text>
-        {bench.map((b) => {
-          const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
-          return (
-            <path
-              key={b.key}
-              d={pathFor(s)}
-              fill="none"
-              stroke={b.color}
-              strokeWidth={1.75}
-              strokeDasharray={b.dash}
-              opacity={0.9}
-            />
-          );
-        })}
-        <path d={pathFor(port)} fill="none" stroke="var(--series-1)" strokeWidth={2.75} />
-        {port.map((p) => (
-          <circle key={p.date} cx={x(p.date)} cy={y(p.v)} r={3} fill="var(--series-1)" />
-        ))}
-        <text x={pad} y={14} fill="var(--text-secondary)" fontSize={11}>
-          Cumulative return since {points[0].date}
-        </text>
-      </svg>
+      <div className="relative">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${width} ${height}`}
+          className="w-full cursor-crosshair"
+          role="img"
+          aria-label="Equity curve vs benchmarks"
+          onMouseMove={handleMove}
+          onMouseLeave={() => setHoverIdx(null)}
+        >
+          <line x1={pad} y1={zeroY} x2={width - pad} y2={zeroY} stroke="var(--grid-line)" strokeDasharray="4 4" />
+          <text x={pad} y={height - 8} fill="var(--text-secondary)" fontSize={10}>
+            {points[0].date}
+          </text>
+          <text x={width - pad} y={height - 8} fill="var(--text-secondary)" fontSize={10} textAnchor="end">
+            {new Date(end).toISOString().slice(0, 10)}
+          </text>
+          {bench.map((b) => {
+            const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
+            return (
+              <path
+                key={b.key}
+                d={pathFor(s)}
+                fill="none"
+                stroke={b.color}
+                strokeWidth={1.75}
+                strokeDasharray={b.dash}
+                opacity={0.9}
+              />
+            );
+          })}
+          <path d={pathFor(port)} fill="none" stroke="var(--series-1)" strokeWidth={2.75} />
+          {port.map((p) => (
+            <circle key={p.date} cx={x(p.date)} cy={y(p.v)} r={3} fill="var(--series-1)" />
+          ))}
+          <text x={pad} y={14} fill="var(--text-secondary)" fontSize={11}>
+            Cumulative return since {points[0].date}
+          </text>
+
+          {hover && (
+            <>
+              <line
+                x1={x(hover.date)}
+                y1={padTop}
+                x2={x(hover.date)}
+                y2={height - pad}
+                stroke="var(--text-secondary)"
+                strokeWidth={1}
+                strokeDasharray="3 3"
+                opacity={0.6}
+              />
+              <circle cx={x(hover.date)} cy={y(hover.v)} r={4} fill="var(--series-1)" stroke="white" strokeWidth={1.5} />
+              {bench.map((b) => {
+                const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
+                const p = asOf(s, hover.date);
+                if (!p) return null;
+                return <circle key={b.key} cx={x(hover.date)} cy={y(p.v)} r={3.5} fill={b.color} stroke="white" strokeWidth={1.25} />;
+              })}
+            </>
+          )}
+        </svg>
+
+        {hover && (
+          <div
+            className="pointer-events-none absolute top-2 z-10 min-w-[9rem] rounded-lg border border-zinc-200/70 bg-white/95 p-2.5 text-xs shadow-lg backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900/95"
+            style={{
+              left: `${Math.min(Math.max((x(hover.date) / width) * 100, 14), 86)}%`,
+              transform: "translateX(-50%)",
+            }}
+          >
+            <div className="mb-1.5 font-medium text-zinc-500 dark:text-zinc-400">{hoverLabel}</div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                <span className="inline-block h-[3px] w-3 rounded" style={{ background: "var(--series-1)" }} />
+                Portfolio
+              </span>
+              <span className="font-semibold tabular-nums" style={{ color: "var(--series-1)" }}>
+                {fmt(hover.v)}
+              </span>
+            </div>
+            {bench
+              .filter((b) => b.points.length)
+              .map((b) => {
+                const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
+                const p = asOf(s, hover.date);
+                if (!p) return null;
+                return (
+                  <div key={b.key} className="mt-1 flex items-center justify-between gap-3">
+                    <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                      <span className="inline-block h-[3px] w-3 rounded" style={{ background: b.color }} />
+                      {b.label}
+                    </span>
+                    <span className="font-semibold tabular-nums" style={{ color: b.color }}>
+                      {fmt(p.v)}
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs">
         {legend.map((l) => (
           <span key={l.label} className="inline-flex items-center gap-2 text-zinc-600 dark:text-zinc-300">

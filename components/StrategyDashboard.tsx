@@ -204,7 +204,7 @@ export default async function StrategyDashboard({
             <div className="mt-10">
               <SectionLabel>Equity Curve</SectionLabel>
               <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-6 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
-                <EquityCurve points={nav} benchmarks={benchmarks} />
+                <EquityCurve points={nav} benchmarks={benchmarks} fetchedAt={fetchedAt} />
               </section>
             </div>
 
