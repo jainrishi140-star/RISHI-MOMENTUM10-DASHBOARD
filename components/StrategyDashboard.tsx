@@ -1,5 +1,6 @@
 import AutoRefresh from "@/components/AutoRefresh";
 import EquityCurve from "@/components/EquityCurve";
+import DrawdownChart from "@/components/DrawdownChart";
 import {
   fetchBenchmarks,
   fetchSiblingStrategies,
@@ -205,6 +206,14 @@ export default async function StrategyDashboard({
               <SectionLabel>Equity Curve</SectionLabel>
               <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-6 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
                 <EquityCurve points={nav} benchmarks={benchmarks} fetchedAt={fetchedAt} />
+              </section>
+            </div>
+
+            {/* ========================== DRAWDOWN =========================== */}
+            <div className="mt-10">
+              <SectionLabel>Max Drawdown</SectionLabel>
+              <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-6 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+                <DrawdownChart points={nav} benchmarks={benchmarks} fetchedAt={fetchedAt} />
               </section>
             </div>
 

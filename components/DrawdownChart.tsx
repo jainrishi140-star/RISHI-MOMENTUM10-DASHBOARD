@@ -5,12 +5,18 @@ import { NavPoint } from "@/lib/portfolio";
 import type { BenchmarkSeries } from "@/lib/benchmarks";
 import { niceTicks } from "@/lib/chartScale";
 
-// Lightweight inline-SVG line chart -- avoids pulling in a charting library
-// for a short-history chart. Plots cumulative return, indexed to 0% at the
-// paper-start date, for the portfolio and each benchmark (rebased to the
-// same start date). X axis is calendar time so the daily benchmark series
-// and the portfolio's snapshots line up.
-export default function EquityCurve({
+// Running drawdown from the peak-to-date, as a % (always <= 0). Same inline-SVG
+// approach as EquityCurve, sharing its date axis and hover behaviour.
+function toDrawdown(series: { date: string; v: number }[]) {
+  let peak = -Infinity;
+  return series.map((p) => {
+    const level = 1 + p.v / 100; // index level, 1 = start
+    peak = Math.max(peak, level);
+    return { date: p.date, v: (level / peak - 1) * 100 };
+  });
+}
+
+export default function DrawdownChart({
   points,
   benchmarks = [],
   fetchedAt,
@@ -25,15 +31,15 @@ export default function EquityCurve({
   if (points.length < 1) {
     return (
       <div className="flex h-40 items-center justify-center px-4 text-center text-sm text-zinc-500 dark:text-zinc-500">
-        Waiting on the first daily NAV snapshot to draw a curve.
+        Waiting on the first daily NAV snapshot to draw a drawdown curve.
       </div>
     );
   }
 
   const width = 760;
-  const height = 300;
+  const height = 220;
   const pad = 44;
-  const padTop = 30;
+  const padTop = 20;
   const padRight = 16;
 
   const t = (d: string) => Date.parse(d + "T00:00:00Z");
@@ -43,36 +49,36 @@ export default function EquityCurve({
   const end = Math.max(...allDates.map(t));
   const xspan = end - start || 1;
 
-  const port = points.map((p) => ({ date: p.date, v: p.portfolioReturn * 100 }));
-  const allVals = [0, ...port.map((p) => p.v), ...bench.flatMap((b) => b.points.map((p) => p.ret * 100))];
+  const port = toDrawdown(points.map((p) => ({ date: p.date, v: p.portfolioReturn * 100 })));
+  const benchDD = bench.map((b) => ({ ...b, dd: toDrawdown(b.points.map((p) => ({ date: p.date, v: p.ret * 100 }))) }));
+
+  const allVals = [0, ...port.map((p) => p.v), ...benchDD.flatMap((b) => b.dd.map((p) => p.v))];
   const dataMin = Math.min(...allVals);
-  const dataMax = Math.max(...allVals);
-  // Pad the value range a touch so the curve never touches the top/bottom edge.
-  const valuePad = (dataMax - dataMin || 1) * 0.08;
+  const valuePad = Math.max(Math.abs(dataMin) * 0.12, 0.25);
   const min = dataMin - valuePad;
-  const max = dataMax + valuePad;
+  const max = 0;
   const span = max - min || 1;
-  const ticks = niceTicks(min, max, 5);
+  const ticks = niceTicks(min, max, 4);
 
   const x = (d: string) => pad + ((t(d) - start) / xspan) * (width - pad - padRight);
   const y = (v: number) => height - pad - ((v - min) / span) * (height - pad - padTop);
   const pathFor = (s: { date: string; v: number }[]) =>
     s.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
   const areaFor = (s: { date: string; v: number }[]) =>
-    `${pathFor(s)} L${x(s[s.length - 1].date).toFixed(1)},${(height - pad).toFixed(1)} L${x(s[0].date).toFixed(1)},${(height - pad).toFixed(1)} Z`;
-  const fmt = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+    `${pathFor(s)} L${x(s[s.length - 1].date).toFixed(1)},${y(0).toFixed(1)} L${x(s[0].date).toFixed(1)},${y(0).toFixed(1)} Z`;
+  const fmt = (v: number) => `${v.toFixed(2)}%`;
   const fmtDate = (d: string) =>
     new Date(t(d)).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
-  // Nearest value on or before `date` for a (possibly sparser) series.
   const asOf = (s: { date: string; v: number }[], date: string) =>
     [...s].reverse().find((p) => p.date <= date) ?? s[0];
 
+  const maxDD = Math.min(...port.map((p) => p.v));
   const legend = [
-    { label: "Portfolio", color: "var(--series-1)", last: port[port.length - 1].v },
-    ...bench
-      .filter((b) => b.points.length)
-      .map((b) => ({ label: b.label, color: b.color, last: b.points[b.points.length - 1].ret * 100 })),
+    { label: "Portfolio", color: "var(--series-1)", worst: maxDD },
+    ...benchDD
+      .filter((b) => b.dd.length)
+      .map((b) => ({ label: b.label, color: b.color, worst: Math.min(...b.dd.map((p) => p.v)) })),
   ];
 
   const lastPortDate = port[port.length - 1].date;
@@ -108,14 +114,14 @@ export default function EquityCurve({
           viewBox={`0 0 ${width} ${height}`}
           className="w-full cursor-crosshair"
           role="img"
-          aria-label="Equity curve vs benchmarks"
+          aria-label="Drawdown vs benchmarks"
           onMouseMove={handleMove}
           onMouseLeave={() => setHoverIdx(null)}
         >
           <defs>
-            <linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--series-1)" stopOpacity={0.22} />
-              <stop offset="100%" stopColor="var(--series-1)" stopOpacity={0} />
+            <linearGradient id="ddFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#e5484d" stopOpacity={0} />
+              <stop offset="100%" stopColor="#e5484d" stopOpacity={0.22} />
             </linearGradient>
           </defs>
 
@@ -135,41 +141,38 @@ export default function EquityCurve({
               </text>
             </g>
           ))}
-          <text x={pad} y={height - 8} fill="var(--text-secondary)" fontSize={10}>
+          <text x={pad} y={height - 6} fill="var(--text-secondary)" fontSize={10}>
             {points[0].date}
           </text>
-          <text x={width - padRight} y={height - 8} fill="var(--text-secondary)" fontSize={10} textAnchor="end">
+          <text x={width - padRight} y={height - 6} fill="var(--text-secondary)" fontSize={10} textAnchor="end">
             {new Date(end).toISOString().slice(0, 10)}
           </text>
-          <path d={areaFor(port)} fill="url(#equityFill)" stroke="none" />
-          {bench.map((b) => {
-            const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
-            return (
-              <path
-                key={b.key}
-                d={pathFor(s)}
-                fill="none"
-                stroke={b.color}
-                strokeWidth={1.75}
-                strokeDasharray={b.dash}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.9}
-              />
-            );
-          })}
+
+          <path d={areaFor(port)} fill="url(#ddFill)" stroke="none" />
+          {benchDD.map((b) => (
+            <path
+              key={b.key}
+              d={pathFor(b.dd)}
+              fill="none"
+              stroke={b.color}
+              strokeWidth={1.75}
+              strokeDasharray={b.dash}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.9}
+            />
+          ))}
           <path
             d={pathFor(port)}
             fill="none"
-            stroke="var(--series-1)"
+            stroke="#e5484d"
             strokeWidth={2.75}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {port.length <= 30 &&
-            port.map((p) => <circle key={p.date} cx={x(p.date)} cy={y(p.v)} r={3} fill="var(--series-1)" />)}
-          <text x={pad} y={14} fill="var(--text-secondary)" fontSize={11}>
-            Cumulative return since {points[0].date}
+          {port.length <= 30 && port.map((p) => <circle key={p.date} cx={x(p.date)} cy={y(p.v)} r={3} fill="#e5484d" />)}
+          <text x={pad} y={12} fill="var(--text-secondary)" fontSize={11}>
+            Drawdown from peak since {points[0].date}
           </text>
 
           {hover && (
@@ -184,10 +187,9 @@ export default function EquityCurve({
                 strokeDasharray="3 3"
                 opacity={0.6}
               />
-              <circle cx={x(hover.date)} cy={y(hover.v)} r={4} fill="var(--series-1)" stroke="white" strokeWidth={1.5} />
-              {bench.map((b) => {
-                const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
-                const p = asOf(s, hover.date);
+              <circle cx={x(hover.date)} cy={y(hover.v)} r={4} fill="#e5484d" stroke="white" strokeWidth={1.5} />
+              {benchDD.map((b) => {
+                const p = asOf(b.dd, hover.date);
                 if (!p) return null;
                 return <circle key={b.key} cx={x(hover.date)} cy={y(p.v)} r={3.5} fill={b.color} stroke="white" strokeWidth={1.25} />;
               })}
@@ -206,31 +208,28 @@ export default function EquityCurve({
             <div className="mb-1.5 font-medium text-zinc-500 dark:text-zinc-400">{hoverLabel}</div>
             <div className="flex items-center justify-between gap-3">
               <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                <span className="inline-block h-[3px] w-3 rounded" style={{ background: "var(--series-1)" }} />
+                <span className="inline-block h-[3px] w-3 rounded" style={{ background: "#e5484d" }} />
                 Portfolio
               </span>
-              <span className="font-semibold tabular-nums" style={{ color: "var(--series-1)" }}>
+              <span className="font-semibold tabular-nums" style={{ color: "#e5484d" }}>
                 {fmt(hover.v)}
               </span>
             </div>
-            {bench
-              .filter((b) => b.points.length)
-              .map((b) => {
-                const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
-                const p = asOf(s, hover.date);
-                if (!p) return null;
-                return (
-                  <div key={b.key} className="mt-1 flex items-center justify-between gap-3">
-                    <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                      <span className="inline-block h-[3px] w-3 rounded" style={{ background: b.color }} />
-                      {b.label}
-                    </span>
-                    <span className="font-semibold tabular-nums" style={{ color: b.color }}>
-                      {fmt(p.v)}
-                    </span>
-                  </div>
-                );
-              })}
+            {benchDD.map((b) => {
+              const p = asOf(b.dd, hover.date);
+              if (!p) return null;
+              return (
+                <div key={b.key} className="mt-1 flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                    <span className="inline-block h-[3px] w-3 rounded" style={{ background: b.color }} />
+                    {b.label}
+                  </span>
+                  <span className="font-semibold tabular-nums" style={{ color: b.color }}>
+                    {fmt(p.v)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -240,7 +239,7 @@ export default function EquityCurve({
             <span className="inline-block h-[3px] w-5 rounded" style={{ background: l.color }} />
             {l.label}
             <span className="font-semibold tabular-nums" style={{ color: l.color }}>
-              {fmt(l.last)}
+              {fmt(l.worst)} max
             </span>
           </span>
         ))}
