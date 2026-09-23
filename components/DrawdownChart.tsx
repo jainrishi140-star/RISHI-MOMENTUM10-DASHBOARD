@@ -89,6 +89,20 @@ export default function DrawdownChart({
       : fmtDate(hover.date)
     : null;
 
+  // Tooltip rows ranked least underwater first (closest to 0 on top).
+  const hoverRows = hover
+    ? [
+        { key: "portfolio", label: "Portfolio", color: "#e5484d", v: hover.v },
+        ...benchDD
+          .filter((b) => b.dd.length)
+          .map((b) => {
+            const p = asOf(b.dd, hover.date);
+            return p ? { key: b.key, label: b.label, color: b.color, v: p.v } : null;
+          })
+          .filter((r): r is { key: string; label: string; color: string; v: number } => r !== null),
+      ].sort((a, b) => b.v - a.v)
+    : [];
+
   function handleMove(e: React.MouseEvent<SVGSVGElement>) {
     const svg = svgRef.current;
     if (!svg) return;
@@ -206,30 +220,17 @@ export default function DrawdownChart({
             }}
           >
             <div className="mb-1.5 font-medium text-zinc-500 dark:text-zinc-400">{hoverLabel}</div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                <span className="inline-block h-[3px] w-3 rounded" style={{ background: "#e5484d" }} />
-                Portfolio
-              </span>
-              <span className="font-semibold tabular-nums" style={{ color: "#e5484d" }}>
-                {fmt(hover.v)}
-              </span>
-            </div>
-            {benchDD.map((b) => {
-              const p = asOf(b.dd, hover.date);
-              if (!p) return null;
-              return (
-                <div key={b.key} className="mt-1 flex items-center justify-between gap-3">
-                  <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                    <span className="inline-block h-[3px] w-3 rounded" style={{ background: b.color }} />
-                    {b.label}
-                  </span>
-                  <span className="font-semibold tabular-nums" style={{ color: b.color }}>
-                    {fmt(p.v)}
-                  </span>
-                </div>
-              );
-            })}
+            {hoverRows.map((r, i) => (
+              <div key={r.key} className={`flex items-center justify-between gap-3 ${i > 0 ? "mt-1" : ""}`}>
+                <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="inline-block h-[3px] w-3 rounded" style={{ background: r.color }} />
+                  {r.label}
+                </span>
+                <span className="font-semibold tabular-nums" style={{ color: r.color }}>
+                  {fmt(r.v)}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>

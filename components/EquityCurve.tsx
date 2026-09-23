@@ -83,6 +83,22 @@ export default function EquityCurve({
       : fmtDate(hover.date)
     : null;
 
+  // Tooltip rows ranked highest return first, so the best-performing
+  // fund at that date is always on top and the laggard on the bottom.
+  const hoverRows = hover
+    ? [
+        { key: "portfolio", label: "Portfolio", color: "var(--series-1)", v: hover.v },
+        ...bench
+          .filter((b) => b.points.length)
+          .map((b) => {
+            const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
+            const p = asOf(s, hover.date);
+            return p ? { key: b.key, label: b.label, color: b.color, v: p.v } : null;
+          })
+          .filter((r): r is { key: string; label: string; color: string; v: number } => r !== null),
+      ].sort((a, b) => b.v - a.v)
+    : [];
+
   function handleMove(e: React.MouseEvent<SVGSVGElement>) {
     const svg = svgRef.current;
     if (!svg) return;
@@ -204,33 +220,17 @@ export default function EquityCurve({
             }}
           >
             <div className="mb-1.5 font-medium text-zinc-500 dark:text-zinc-400">{hoverLabel}</div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                <span className="inline-block h-[3px] w-3 rounded" style={{ background: "var(--series-1)" }} />
-                Portfolio
-              </span>
-              <span className="font-semibold tabular-nums" style={{ color: "var(--series-1)" }}>
-                {fmt(hover.v)}
-              </span>
-            </div>
-            {bench
-              .filter((b) => b.points.length)
-              .map((b) => {
-                const s = b.points.map((p) => ({ date: p.date, v: p.ret * 100 }));
-                const p = asOf(s, hover.date);
-                if (!p) return null;
-                return (
-                  <div key={b.key} className="mt-1 flex items-center justify-between gap-3">
-                    <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                      <span className="inline-block h-[3px] w-3 rounded" style={{ background: b.color }} />
-                      {b.label}
-                    </span>
-                    <span className="font-semibold tabular-nums" style={{ color: b.color }}>
-                      {fmt(p.v)}
-                    </span>
-                  </div>
-                );
-              })}
+            {hoverRows.map((r, i) => (
+              <div key={r.key} className={`flex items-center justify-between gap-3 ${i > 0 ? "mt-1" : ""}`}>
+                <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="inline-block h-[3px] w-3 rounded" style={{ background: r.color }} />
+                  {r.label}
+                </span>
+                <span className="font-semibold tabular-nums" style={{ color: r.color }}>
+                  {fmt(r.v)}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
