@@ -32,8 +32,13 @@ export function parseSheetDate(s: string): string | null {
   return `${m[3]}-${mon}-${m[1].padStart(2, "0")}`;
 }
 
-function findRow(rows: string[][], matchFirstCell: string): number {
-  return rows.findIndex((r) => (r[0] ?? "").trim() === matchFirstCell);
+// matchFirstCell can be a single label or a few accepted variants -- e.g. the
+// RISHI x VIRAJ sheet's Rebalance tab has its "Ticker" header protected as
+// "Slot" instead (cash-sleeve row isn't a real ticker), so that tab's caller
+// passes both.
+function findRow(rows: string[][], matchFirstCell: string | string[]): number {
+  const labels = Array.isArray(matchFirstCell) ? matchFirstCell : [matchFirstCell];
+  return rows.findIndex((r) => labels.includes((r[0] ?? "").trim()));
 }
 
 const START_CAPITAL = 10_000_000; // ₹1 Cr -- fixed forward-test parameter (BuildMomentumPortfolio_10stock.gs)
@@ -173,10 +178,12 @@ export interface RebalanceRow {
 }
 
 export function parseRebalance(rows: string[][]): { nextDate: string; rows: RebalanceRow[] } {
-  // "Next rebalance (Wed)" label sits two rows above the "Ticker" header.
+  // "Next rebalance (Wed)" label sits two rows above the "Ticker" header --
+  // "Slot" on the RISHI x VIRAJ sheet, whose header is protected under that
+  // label since one slot is a cash sleeve, not a real ticker.
   const labelIdx = rows.findIndex((r) => (r[0] ?? "").trim().startsWith("Next rebalance"));
   const nextDate = labelIdx >= 0 ? cell(rows, labelIdx, 1) : "";
-  const headerIdx = findRow(rows, "Ticker");
+  const headerIdx = findRow(rows, ["Ticker", "Slot"]);
   const out: RebalanceRow[] = [];
   for (let r = headerIdx + 1; r < rows.length; r++) {
     const ticker = cell(rows, r, 0);
