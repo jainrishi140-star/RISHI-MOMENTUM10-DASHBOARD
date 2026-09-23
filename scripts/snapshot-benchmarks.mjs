@@ -47,20 +47,22 @@ async function moslNavMfapi() {
 }
 
 async function moslNavAmfi() {
-  // amfiindia.com redirects here; hit the final host directly to avoid an
-  // extra hop that occasionally times out.
-  const res = await fetch("https://portal.amfiindia.com/spages/NAVAll.txt", {
-    headers: { "User-Agent": "Mozilla/5.0" },
-  });
+  // AMFI's date-range NAV history report -- unlike NAVAll.txt (today only),
+  // this backfills every day in the window in one call, so a multi-day
+  // mfapi.in outage self-heals completely instead of leaving single-day gaps.
+  const url = `https://portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx?frmdt=${fmtNse(START)}&todt=${fmtNse(todayIst())}`;
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) throw new Error(`MOSL AMFI: HTTP ${res.status}`);
   const text = await res.text();
-  const row = text.split("\n").find((l) => l.startsWith("153364;")); // scheme code, Direct Plan - Growth
-  if (!row) throw new Error("MOSL AMFI: scheme code 153364 not found in NAVAll.txt");
-  const cols = row.split(";");
-  const nav = Number(cols[6]);
-  const [d, mon, y] = cols[7].trim().split("-");
-  if (!Number.isFinite(nav) || nav <= 0) throw new Error(`MOSL AMFI: bad NAV "${cols[6]}"`);
-  return [{ date: `${y}-${pad(MON[mon])}-${pad(Number(d))}`, value: nav }];
+  const rows = text.split("\n").filter((l) => l.startsWith("153364;")); // scheme code, Direct Plan - Growth
+  if (!rows.length) throw new Error("MOSL AMFI: scheme code 153364 not found in NAV history report");
+  return rows.map((row) => {
+    const cols = row.split(";");
+    const nav = Number(cols[6]);
+    const [d, mon, y] = cols[7].trim().split("-");
+    if (!Number.isFinite(nav) || nav <= 0) throw new Error(`MOSL AMFI: bad NAV "${cols[6]}"`);
+    return { date: `${y}-${pad(MON[mon])}-${pad(Number(d))}`, value: nav };
+  });
 }
 
 async function moslNav() {
