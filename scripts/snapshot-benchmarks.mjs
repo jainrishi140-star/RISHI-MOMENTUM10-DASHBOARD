@@ -31,14 +31,45 @@ async function niftyIndices(code, name) {
   });
 }
 
-async function moslNav() {
+// mfapi.in's upstream feed has gone stale for multi-day stretches before
+// (silently stopped updating while still returning HTTP 200), so it can't be
+// trusted alone. AMFI's own NAVAll.txt is the authoritative daily feed and
+// is fetched every run to backfill/override whatever mfapi.in has -- if
+// mfapi.in is stale, AMFI still supplies at least today's point.
+async function moslNavMfapi() {
   const res = await fetch("https://api.mfapi.in/mf/153364"); // Motilal Oswal Active Momentum Fund - Direct - Growth
-  if (!res.ok) throw new Error(`MOSL: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`MOSL mfapi: HTTP ${res.status}`);
   const j = await res.json();
   return j.data.map((r) => {
     const [d, m, y] = r.date.split("-");
-    return { date: `${y}-${m}-${d}`, value: Number(r.nav) };
+    return { date: `${y}-${pad(Number(m))}-${pad(Number(d))}`, value: Number(r.nav) };
   });
+}
+
+async function moslNavAmfi() {
+  // amfiindia.com redirects here; hit the final host directly to avoid an
+  // extra hop that occasionally times out.
+  const res = await fetch("https://portal.amfiindia.com/spages/NAVAll.txt", {
+    headers: { "User-Agent": "Mozilla/5.0" },
+  });
+  if (!res.ok) throw new Error(`MOSL AMFI: HTTP ${res.status}`);
+  const text = await res.text();
+  const row = text.split("\n").find((l) => l.startsWith("153364;")); // scheme code, Direct Plan - Growth
+  if (!row) throw new Error("MOSL AMFI: scheme code 153364 not found in NAVAll.txt");
+  const cols = row.split(";");
+  const nav = Number(cols[6]);
+  const [d, mon, y] = cols[7].trim().split("-");
+  if (!Number.isFinite(nav) || nav <= 0) throw new Error(`MOSL AMFI: bad NAV "${cols[6]}"`);
+  return [{ date: `${y}-${pad(MON[mon])}-${pad(Number(d))}`, value: nav }];
+}
+
+async function moslNav() {
+  const results = await Promise.allSettled([moslNavMfapi(), moslNavAmfi()]);
+  const byDate = new Map();
+  for (const r of results) if (r.status === "fulfilled") for (const p of r.value) byDate.set(p.date, p);
+  if (!byDate.size) throw results.find((r) => r.status === "rejected").reason;
+  if (results[1].status === "rejected") console.warn(`[mosl] AMFI fallback failed: ${results[1].reason.message}`);
+  return [...byDate.values()];
 }
 
 const SOURCES = {
