@@ -36,7 +36,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function StatBlock({ title, rows }: { title: string; rows: KV[] }) {
   return (
-    <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-5 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+    <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-5 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
       <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{title}</div>
       <dl className="space-y-2">
         {rows.map((kv) => (
@@ -157,7 +157,7 @@ export default async function StrategyDashboard({
         <Nav current={currentPath} />
 
         <div>
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white/80 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-400">
+          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white/80 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500 backdrop-blur dark:border-zinc-800 dark:bg-black/80 dark:text-zinc-400">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -189,7 +189,7 @@ export default async function StrategyDashboard({
               ].map((h) => (
                 <div
                   key={h.label}
-                  className="rounded-2xl border border-zinc-200/70 bg-white/90 p-4 text-center shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90"
+                  className="rounded-2xl border border-zinc-200/70 bg-white/90 p-4 text-center shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90"
                 >
                   <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                     {h.label}
@@ -204,7 +204,7 @@ export default async function StrategyDashboard({
             {/* ========================= EQUITY CURVE ========================= */}
             <div className="mt-10">
               <SectionLabel>Equity Curve</SectionLabel>
-              <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-6 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+              <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-6 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
                 <EquityCurve points={nav} benchmarks={benchmarks} fetchedAt={fetchedAt} />
               </section>
             </div>
@@ -212,7 +212,7 @@ export default async function StrategyDashboard({
             {/* ========================== DRAWDOWN =========================== */}
             <div className="mt-10">
               <SectionLabel>Max Drawdown</SectionLabel>
-              <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-6 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+              <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-6 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
                 <DrawdownChart points={nav} benchmarks={benchmarks} fetchedAt={fetchedAt} />
               </section>
             </div>
@@ -231,7 +231,7 @@ export default async function StrategyDashboard({
             {dashboard.attention.length > 0 && (
               <div className="mt-10">
                 <SectionLabel>Attention</SectionLabel>
-                <section className="space-y-3 rounded-2xl border border-zinc-200/70 bg-white/90 p-5 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+                <section className="space-y-3 rounded-2xl border border-zinc-200/70 bg-white/90 p-5 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
                   {dashboard.attention.map((a) => (
                     <div key={a.label} className="text-sm">
                       <span className="font-medium text-zinc-700 dark:text-zinc-300">{a.label}: </span>
@@ -250,7 +250,7 @@ export default async function StrategyDashboard({
         {holdings && holdings.rows.length > 0 && (
           <div className="mt-12">
             <SectionLabel>Holdings</SectionLabel>
-            <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+            <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
               <table className="w-full text-left text-sm">
                 <thead className="bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
                   <tr>
@@ -306,7 +306,7 @@ export default async function StrategyDashboard({
         {momentum.length > 0 && (
           <div className="mt-12">
             <SectionLabel>Momentum Monitor</SectionLabel>
-            <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+            <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
               <table className="w-full text-left text-sm">
                 <thead className="bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
                   <tr>
@@ -355,7 +355,7 @@ export default async function StrategyDashboard({
         {rebalance && rebalance.rows.length > 0 && (
           <div className="mt-12">
             <SectionLabel>Rebalance — next {rebalance.nextDate || "Wednesday"}</SectionLabel>
-            <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/90">
+            <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
               <table className="w-full text-left text-sm">
                 <thead className="bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
                   <tr>

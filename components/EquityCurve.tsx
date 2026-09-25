@@ -213,7 +213,7 @@ export default function EquityCurve({
 
         {hover && (
           <div
-            className="pointer-events-none absolute top-2 z-10 min-w-[9rem] rounded-lg border border-zinc-200/70 bg-white/95 p-2.5 text-xs shadow-lg backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900/95"
+            className="pointer-events-none absolute top-2 z-10 min-w-[9rem] rounded-lg border border-zinc-200/70 bg-white/95 p-2.5 text-xs shadow-lg backdrop-blur-sm dark:border-zinc-700/70 dark:bg-black/95"
             style={{
               left: `${Math.min(Math.max((x(hover.date) / width) * 100, 14), 86)}%`,
               transform: "translateX(-50%)",

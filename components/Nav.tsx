@@ -9,7 +9,7 @@ const ITEMS = [
 
 export default function Nav({ current }: { current: string }) {
   return (
-    <nav className="mb-8 inline-flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-white/80 p-1 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
+    <nav className="mb-8 inline-flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-white/80 p-1 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-black/80">
       {ITEMS.map((item) => (
         <Link
           key={item.href}
