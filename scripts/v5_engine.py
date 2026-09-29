@@ -66,6 +66,47 @@ def load_signals(pq):
     return close, sharpe, rsi, quar, opn.values, low.values
 
 
+def stock_supertrend_red(pq, index, sids, period=2, mult=1.0):
+    """Daily per-stock Supertrend(period, mult) on each stock's own rows.
+    Returns bool (T x N): True where the stock's close is below its Supertrend line
+    (trend red) on that date.  Missing rows are False."""
+    df = pd.read_parquet(pq, columns=["date", "sid", "high", "low", "close"])
+    df = df[df.close > 0].sort_values(["sid", "date"])
+    col = {s: j for j, s in enumerate(sids)}
+    red = np.zeros((len(index), len(sids)), bool)
+    for sid, g in df.groupby("sid", sort=False):
+        n = len(g)
+        if n <= period or sid not in col:
+            continue
+        h, l, c = g.high.values, g.low.values, g.close.values
+        tr = np.empty(n)
+        tr[0] = h[0] - l[0]
+        tr[1:] = np.maximum.reduce([h[1:] - l[1:], abs(h[1:] - c[:-1]), abs(l[1:] - c[:-1])])
+        atr = tr[:period].mean()
+        fu = fl = 0.0
+        up = True
+        out = np.zeros(n, bool)
+        for i in range(period - 1, n):
+            if i >= period:
+                atr = (atr * (period - 1) + tr[i]) / period
+            hl2 = (h[i] + l[i]) / 2
+            bu, bl = hl2 + mult * atr, hl2 - mult * atr
+            if i == period - 1:
+                fu, fl = bu, bl
+            else:
+                pc = c[i - 1]
+                fu = bu if (bu < fu or pc > fu) else fu
+                fl = bl if (bl > fl or pc < fl) else fl
+                if up and c[i] < fl:
+                    up = False
+                elif not up and c[i] > fu:
+                    up = True
+            out[i] = not up
+        idx = index.get_indexer(pd.DatetimeIndex(g.date.values))
+        red[idx, col[sid]] = out
+    return red
+
+
 def supertrend_states(csv, period=4, mult=3.0):
     b = pd.read_csv(csv, parse_dates=["time"])
     b["fri"] = b.time.apply(lambda t: (t + timedelta(days=4 - t.weekday())).date())
@@ -151,7 +192,8 @@ class Tax:
 
 # ----------------------------------------------------------------- backtest
 def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None):
-    """mode: liquidate (rulebook V5) | sl_none | sl_replace | sl_gold.
+    """mode: liquidate (rulebook V5) | sl_none | sl_replace | sl_gold
+    | st_exit | st_exit_filter (per-stock daily Supertrend(2,1) exit; freed cash idles).
 
     sl_*: on a risk-off flip nothing is sold; every holding gets a strict stop at
     (1 - sl_pct) x its close on the flip's signal date, tested against the daily low
@@ -165,7 +207,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
     """
     close, sharpe, rsi, quar, OPN, LOW = load_signals(pq)
     states = supertrend_states(csv, *st)
-    sl = mode != "liquidate"
+    sl = mode.startswith("sl")
     dates = list(close.index.date)
     T, sids = len(dates), list(close.columns)
     C = close.values
@@ -187,6 +229,11 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
         OPN = np.column_stack([OPN, gp])
         LOW = np.column_stack([LOW, gp])
     sid_arr = np.array(sids[:N])
+    st_red = None
+    if mode.startswith("st_exit"):
+        st_red = stock_supertrend_red(pq, close.index, sids)
+    # candidate mask: quarantine (+ red stock Supertrend when entry filter is on)
+    Qsel = Q | st_red if mode == "st_exit_filter" else Q
 
     # cash-call changes -> (signal friday, new_state)
     chg = []
@@ -209,7 +256,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
 
     events = {}  # exec idx -> list of events
     red_sig = set()
-    stops, stop_hits = {}, 0
+    stops, stop_hits, st_exits = {}, 0, 0
     for f, on in chg:
         if f < dates[0]:
             continue
@@ -218,7 +265,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
         if ex >= T:
             continue
         if on:
-            plan = None if sl else select(sig, set(), SH, RS, Q, valid, sid_arr, True)
+            plan = None if sl else select(sig, set(), SH, RS, Qsel, valid, sid_arr, True)
             events.setdefault(ex, []).append(("ON", plan))
         else:
             events.setdefault(ex, []).append(("OFF", None))
@@ -306,9 +353,14 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
         # monthly signal at close of i
         if i in monthly and state_at(d):
             monthly_plans.setdefault(monthly[i], []).append(
-                ("MON", select(i, {k for k in hold if k != GOLD}, SH, RS, Q, valid[:, :N], sid_arr, False)))
+                ("MON", select(i, {k for k in hold if k != GOLD}, SH, RS, Qsel, valid[:, :N], sid_arr, False)))
         evs = events.get(i, []) + monthly_plans.get(i, [])
         kinds = [e[0] for e in evs]
+        if st_red is not None:
+            for k in list(hold):
+                if st_red[i, k] and valid[i, k]:
+                    sell(i, k, hold[k], "ST_EXIT")
+                    st_exits += 1
         if sl:
             if "ON" in kinds:
                 stops.clear()
@@ -459,6 +511,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
         "mode": mode,
         "supertrend": list(st),
         "stop_loss_hits": stop_hits,
+        "stock_supertrend_exits": st_exits,
         "trade_legs": len(trades),
         "cash_call_state_changes_in_window": sum(1 for f, _ in chg if f >= dates[0] and next_idx(f) < T),
     }
