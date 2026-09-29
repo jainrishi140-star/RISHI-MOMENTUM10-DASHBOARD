@@ -85,6 +85,8 @@ def main(pq, trades_csv, nav_csv, out):
 
     held_days = held[:-1].sum()  # stock-days exposed to a next-day move
     rows, worst_rows, ev_all = [], [], []
+    bydate, syms = [], np.array([sym.get(c, "?") for c in close.columns])
+    nheld = held.sum(axis=1)
     yr = {}
     for n in WINDOWS:
         ret = np.full_like(C, np.nan)
@@ -94,6 +96,12 @@ def main(pq, trades_csv, nav_csv, out):
         for x in THRESH:
             flag = exposed & (ret <= -x / 100)
             ti, kj = np.nonzero(flag)
+            cnt = flag.sum(axis=1)
+            for t in np.nonzero(cnt)[0]:
+                bydate.append(dict(date=dates[t].date(), window=f"{n}d", fall=f">={x}%",
+                                   stocks_held=int(nheld[t - 1]), stocks_fallen=int(cnt[t]),
+                                   pct_of_portfolio=100 * cnt[t] / max(nheld[t - 1], 1),
+                                   symbols=", ".join(syms[flag[t]])))
             if len(ti) == 0:
                 rows.append(dict(window=f"{n}d", fall=f">={x}%", flagged_days=0))
                 continue
@@ -146,7 +154,15 @@ def main(pq, trades_csv, nav_csv, out):
 
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
+    bd = pd.DataFrame(bydate)
+    bd.to_csv(out / "v5_fall_by_date.csv", index=False)
     res.to_csv(out / "v5_fall_summary.csv", index=False)
+    dist = bd.groupby(["window", "fall"]).stocks_fallen.agg(
+        dates="count", avg="mean", mx="max",
+        d2=lambda v: (v >= 2).sum(), d3=lambda v: (v >= 3).sum(), d5=lambda v: (v >= 5).sum(),
+        d10=lambda v: (v >= 10).sum()).reset_index()
+    dist.columns = ["window", "fall", "dates_with_a_fall", "avg_stocks_falling", "max_stocks_falling",
+                    "dates_2plus", "dates_3plus", "dates_5plus", "dates_10plus"]
     ev.to_csv(out / "v5_fall_events.csv", index=False)
 
     # portfolio-level daily drops
@@ -172,6 +188,15 @@ def main(pq, trades_csv, nav_csv, out):
                                 "sold_within_5d_pct", "sold_within_20d_pct", "spell_ret_after_fall_pct"])]:
         L.append(f"## {title}\n")
         L.append(md(res[cols]) + "\n")
+    L.append("## Number of held stocks falling on the same date\n")
+    L.append("Dates on which at least one held stock met the fall test; "
+             "dates_Kplus = dates on which K or more held stocks fell together.\n")
+    L.append(md(dist) + "\n")
+    for w_, f_ in [("1d", ">=5%"), ("1d", ">=10%"), ("5d", ">=10%")]:
+        t_ = bd[(bd.window == w_) & (bd.fall == f_)].sort_values(
+            ["stocks_fallen", "date"], ascending=[False, True]).head(12)
+        L.append(f"### Dates with most stocks falling ({w_} {f_})\n")
+        L.append(md(t_[["date", "stocks_held", "stocks_fallen", "pct_of_portfolio", "symbols"]], 1) + "\n")
     L.append("## Portfolio-level daily drops (days invested)\n")
     L.append(md(pd.DataFrame(pd_rows)) + "\n")
     yrs = pd.DataFrame(yr, index=[0]).T.reset_index() if yr else pd.DataFrame()
