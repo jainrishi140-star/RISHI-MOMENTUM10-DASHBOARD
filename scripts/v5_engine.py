@@ -260,7 +260,7 @@ class Tax:
 
 
 # ----------------------------------------------------------------- backtest
-def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None):
+def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None, crash=None):
     """mode: liquidate (rulebook V5) | sl_none | sl_replace | sl_gold
     | st_exit | st_exit_filter (per-stock daily Supertrend(2,1) exit; freed cash idles)
     | stw_exit | stw_exit_filter (same on weekly bars).
@@ -274,6 +274,12 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
     sl_gold: like sl_none, but each stop-out's proceeds are put into GOLDBEES (same
     day, no STT, same FIFO tax lots) and the gold is sold when risk-on resumes.  Only
     weekly gold bars exist, so gold is marked/traded at the latest completed weekly close.
+
+    crash=dict(n, x, k, cool, gold): breadth crash rule.  If at least k stocks held at the
+    start of day i have fallen >= x% over n sessions (close-to-close), everything is sold at
+    the T+1 close, monthly buys are suspended for `cool` sessions (proceeds sit in cash, or
+    GOLDBEES if gold), then the portfolio is rebuilt at that session's close as on a
+    risk-on flip (if the cash call is green; otherwise the next green flip rebuilds).
     """
     close, sharpe, rsi, quar, OPN, LOW = load_signals(pq)
     states = supertrend_states(csv, *st)
@@ -286,7 +292,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
     last = pd.DataFrame(C).ffill().values  # latest available close
     N = len(sids)
     GOLD = -1
-    if mode == "sl_gold":
+    if mode == "sl_gold" or (crash and crash.get("gold")):
         g = pd.read_csv(gold_csv, parse_dates=["time"])
         gf = [(t + timedelta(days=4 - t.weekday())).date() for t in g.time]
         gi = np.array([bisect_right(gf, d) - 1 for d in dates])
@@ -418,6 +424,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
         return cash + sum(q * px(i, k) for k, q in hold.items())
 
     first_inv = None
+    blocked_until, crash_sched, crash_events = -1, False, 0
     for i in range(T):
         d = dates[i]
         if i > 0:
@@ -428,6 +435,30 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
                 ("MON", select(i, {k for k in hold if k != GOLD}, SH, RS, Qsel, valid[:, :N], sid_arr, False)))
         evs = events.get(i, []) + monthly_plans.get(i, [])
         kinds = [e[0] for e in evs]
+        if crash:
+            n_, x_, k_, cool_ = crash["n"], crash["x"], crash["k"], crash["cool"]
+            if risk_on and not crash_sched and i >= blocked_until and i >= n_ and i + 1 < T:
+                nf = sum(1 for k in hold if k != GOLD and valid[i, k] and valid[i - n_, k]
+                         and C[i, k] / C[i - n_, k] - 1 <= -x_)
+                if nf >= k_:
+                    monthly_plans.setdefault(i + 1, []).append(("CRASH", None))
+                    crash_sched = True
+            if "CRASH" in kinds:
+                crash_sched = False
+                if "OFF" not in kinds and any(k != GOLD for k in hold):
+                    crash_events += 1
+                    cash0 = cash
+                    for k in list(hold):
+                        if k != GOLD:
+                            sell(i, k, hold[k], "CRASH")
+                    pending.clear()
+                    if crash.get("gold"):
+                        buy(i, GOLD, cash - cash0, "GOLD")
+                    blocked_until = i + cool_
+                    if blocked_until < T:
+                        monthly_plans.setdefault(blocked_until, []).append(
+                            ("CREB", select(blocked_until - 1, set(), SH, RS, Qsel, valid[:, :N],
+                                            sid_arr, True)))
         if st_red is not None:
             for k in list(hold):
                 if st_red[i, k] and valid[i, k]:
@@ -464,14 +495,15 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
         elif "ON" in kinds:
             risk_on = True
             pending.clear()
-            eq = equity(i)
-            plan = [e for e in evs if e[0] == "ON"][-1][1]
-            for k in plan["buys"]:
-                if valid[i, k]:
-                    buy(i, k, eq / SLOTS, "REBUILD")
-                else:
-                    pending.append(k)
-        elif "MON" in kinds and risk_on:
+            if i >= blocked_until:
+                eq = equity(i)
+                plan = [e for e in evs if e[0] == "ON"][-1][1]
+                for k in plan["buys"]:
+                    if valid[i, k]:
+                        buy(i, k, eq / SLOTS, "REBUILD")
+                    else:
+                        pending.append(k)
+        elif "MON" in kinds and risk_on and i >= blocked_until:
             plan = [e for e in evs if e[0] == "MON"][-1][1]
             eq = equity(i)
             target = eq / SLOTS
@@ -493,6 +525,15 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
                 v = hold[k] * px(i, k)
                 if v < target * (1 - 1e-9) and valid[i, k]:
                     buy(i, k, target - v, "TOPUP")
+        if "CREB" in kinds and risk_on and not any(k != GOLD for k in hold):
+            if GOLD in hold:
+                sell(i, GOLD, hold[GOLD], "GOLD_EXIT")
+            eq = equity(i)
+            for k in [e for e in evs if e[0] == "CREB"][-1][1]["buys"]:
+                if valid[i, k]:
+                    buy(i, k, eq / SLOTS, "CRASH_REBUILD")
+                else:
+                    pending.append(k)
         if sl and not risk_on:
             for e in evs:
                 if e[0] == "REPL":
@@ -584,6 +625,8 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
         "supertrend": list(st),
         "stop_loss_hits": stop_hits,
         "stock_supertrend_exits": st_exits,
+        "crash_rule": crash,
+        "crash_events": crash_events,
         "trade_legs": len(trades),
         "cash_call_state_changes_in_window": sum(1 for f, _ in chg if f >= dates[0] and next_idx(f) < T),
     }
@@ -632,4 +675,7 @@ if __name__ == "__main__":
     run(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "v5_out",
         (int(sys.argv[4]), float(sys.argv[5])) if len(sys.argv) > 5 else (4, 3.0),
         sys.argv[6] if len(sys.argv) > 6 else "liquidate",
-        gold_csv=sys.argv[7] if len(sys.argv) > 7 else None)
+        gold_csv=sys.argv[7] if len(sys.argv) > 7 and sys.argv[7] != "-" else None,
+        crash=(dict(zip(("n", "x", "k", "cool"), (int(sys.argv[8]), float(sys.argv[9]), int(sys.argv[10]),
+                                                    int(sys.argv[11]))), gold=len(sys.argv) > 12 and sys.argv[12] == "gold")
+               if len(sys.argv) > 11 else None))
