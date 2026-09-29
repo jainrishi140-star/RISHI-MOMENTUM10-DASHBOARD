@@ -23,6 +23,30 @@
   "trade_legs": 4783,
   "cash_call_state_changes_in_window": 124
  },
+ "21_sl_gold": {
+  "first_invested_date": "2007-10-08",
+  "final_date": "2026-09-04",
+  "first_invested_nav": 10691917.94,
+  "final_post_tax_value": 191688638.1,
+  "post_tax_cagr_pct": 16.49,
+  "volatility_pct": 15.98,
+  "sharpe": 0.82,
+  "sortino": 1.18,
+  "max_drawdown_pct": -25.39,
+  "calmar": 0.77,
+  "fifo_win_rate_pct": 60.53,
+  "annualized_turnover_x": 7.64,
+  "total_tax_paid": 35855210.46,
+  "final_partial_year_tax": 297828.16,
+  "mode": "sl_gold",
+  "supertrend": [
+   2,
+   1.0
+  ],
+  "stop_loss_hits": 639,
+  "trade_legs": 3526,
+  "cash_call_state_changes_in_window": 124
+ },
  "21_sl_none": {
   "first_invested_date": "2007-10-08",
   "final_date": "2026-09-04",
@@ -93,6 +117,54 @@
   ],
   "stop_loss_hits": 0,
   "trade_legs": 3484,
+  "cash_call_state_changes_in_window": 33
+ },
+ "43_sl_gold": {
+  "first_invested_date": "2007-10-08",
+  "final_date": "2026-09-04",
+  "first_invested_nav": 10691917.94,
+  "final_post_tax_value": 383926042.61,
+  "post_tax_cagr_pct": 20.85,
+  "volatility_pct": 17.74,
+  "sharpe": 0.99,
+  "sortino": 1.41,
+  "max_drawdown_pct": -26.77,
+  "calmar": 0.91,
+  "fifo_win_rate_pct": 68.11,
+  "annualized_turnover_x": 4.51,
+  "total_tax_paid": 61144140.45,
+  "final_partial_year_tax": 13272619.51,
+  "mode": "sl_gold",
+  "supertrend": [
+   4,
+   3.0
+  ],
+  "stop_loss_hits": 234,
+  "trade_legs": 3342,
+  "cash_call_state_changes_in_window": 33
+ },
+ "43_sl_none": {
+  "first_invested_date": "2007-10-08",
+  "final_date": "2026-09-04",
+  "first_invested_nav": 10691917.94,
+  "final_post_tax_value": 223155764.56,
+  "post_tax_cagr_pct": 17.43,
+  "volatility_pct": 14.77,
+  "sharpe": 0.91,
+  "sortino": 1.27,
+  "max_drawdown_pct": -26.12,
+  "calmar": 0.77,
+  "fifo_win_rate_pct": 66.83,
+  "annualized_turnover_x": 3.31,
+  "total_tax_paid": 34277913.61,
+  "final_partial_year_tax": 419453.57,
+  "mode": "sl_none",
+  "supertrend": [
+   4,
+   3.0
+  ],
+  "stop_loss_hits": 234,
+  "trade_legs": 3173,
   "cash_call_state_changes_in_window": 33
  }
 }

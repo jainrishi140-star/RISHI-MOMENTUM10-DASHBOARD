@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """STAR RSI SHARPE 2.0 - V5 engine (see rulebook).
 
-usage: v5_engine.py <pit_parquet> <smallcap_weekly_csv> [out_dir [atr_period mult [mode]]]
+usage: v5_engine.py <pit_parquet> <smallcap_weekly_csv> [out_dir [atr_period mult [mode [gold_csv]]]]
 
 Parquet columns: date, sid, sym, close (a row's presence == available price and
 PIT membership).  Fractional shares, T+1 close execution, FIFO tax, cash interest.
@@ -23,8 +23,8 @@ RSI_N, RSI_BUY, RSI_EXIT = 50, 55.0, 50.0
 
 
 # ----------------------------------------------------------------- costs
-def cost_rate(d, buy):
-    stt = 0.00125 if d < date(2013, 6, 1) else 0.001
+def cost_rate(d, buy, stt_on=True):
+    stt = (0.00125 if d < date(2013, 6, 1) else 0.001) if stt_on else 0.0
     gst = 0.18 * (0.0003 + 0.0000297 + 0.000001)
     return 0.002 + 0.0003 + 0.0000297 + 0.000001 + gst + stt + (0.00015 if buy else 0.0)
 
@@ -150,8 +150,8 @@ class Tax:
 
 
 # ----------------------------------------------------------------- backtest
-def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
-    """mode: liquidate (rulebook V5) | sl_none | sl_replace.
+def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None):
+    """mode: liquidate (rulebook V5) | sl_none | sl_replace | sl_gold.
 
     sl_*: on a risk-off flip nothing is sold; every holding gets a strict stop at
     (1 - sl_pct) x its close on the flip's signal date, tested against the daily low
@@ -159,6 +159,9 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
     and resumes the normal monthly strategy (no rebuild).  While risk-off, monthly
     decisions are suspended; sl_replace additionally buys the top-ranked new
     candidate(s) at T+1 close for each slot a stop frees (stop = 5% below entry).
+    sl_gold: like sl_none, but each stop-out's proceeds are put into GOLDBEES (same
+    day, no STT, same FIFO tax lots) and the gold is sold when risk-on resumes.  Only
+    weekly gold bars exist, so gold is marked/traded at the latest completed weekly close.
     """
     close, sharpe, rsi, quar, OPN, LOW = load_signals(pq)
     states = supertrend_states(csv, *st)
@@ -169,7 +172,21 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
     SH, RS, Q = sharpe.values, rsi.values, quar.values
     valid = ~np.isnan(C)
     last = pd.DataFrame(C).ffill().values  # latest available close
-    sid_arr = np.array(sids)
+    N = len(sids)
+    GOLD = -1
+    if mode == "sl_gold":
+        g = pd.read_csv(gold_csv, parse_dates=["time"])
+        gf = [(t + timedelta(days=4 - t.weekday())).date() for t in g.time]
+        gi = np.array([bisect_right(gf, d) - 1 for d in dates])
+        gp = np.where(gi >= 0, g.close.values[np.maximum(gi, 0)], np.nan)
+        GOLD = N
+        sids.append("GOLDBEES")
+        C = np.column_stack([C, gp])
+        valid = ~np.isnan(C)
+        last = pd.DataFrame(C).ffill().values
+        OPN = np.column_stack([OPN, gp])
+        LOW = np.column_stack([LOW, gp])
+    sid_arr = np.array(sids[:N])
 
     # cash-call changes -> (signal friday, new_state)
     chg = []
@@ -240,7 +257,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
         if qty <= 1e-12:
             return
         p = px(i, k) if price is None else price
-        net = qty * p * (1 - cost_rate(d, False))
+        net = qty * p * (1 - cost_rate(d, False, k != GOLD))
         cash += net
         notional += qty * p
         remaining, fy = qty, fy_of(d)
@@ -271,7 +288,7 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
         if budget <= 1.0 or not valid[i, k]:
             return
         p = C[i, k]
-        qty = budget / (p * (1 + cost_rate(d, True)))
+        qty = budget / (p * (1 + cost_rate(d, True, k != GOLD)))
         cash -= budget
         notional += qty * p
         hold[k] = hold.get(k, 0.0) + qty
@@ -289,19 +306,22 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
         # monthly signal at close of i
         if i in monthly and state_at(d):
             monthly_plans.setdefault(monthly[i], []).append(
-                ("MON", select(i, set(hold), SH, RS, Q, valid, sid_arr, False, hold_ids=set(hold))))
+                ("MON", select(i, {k for k in hold if k != GOLD}, SH, RS, Q, valid[:, :N], sid_arr, False)))
         evs = events.get(i, []) + monthly_plans.get(i, [])
         kinds = [e[0] for e in evs]
         if sl:
             if "ON" in kinds:
                 stops.clear()
             hit = 0
+            cash0 = cash
             for k in list(hold):
                 if k in stops and valid[i, k] and LOW[i, k] <= stops[k]:
                     sell(i, k, hold[k], "STOPLOSS", min(stops[k], OPN[i, k]))
                     del stops[k]
                     hit += 1
             stop_hits += hit
+            if hit and mode == "sl_gold":
+                buy(i, GOLD, cash - cash0, "GOLD")
             if hit and mode == "sl_replace":
                 monthly_plans.setdefault(i + 1, []).append(
                     ("REPL", (hit, select(i, set(hold), SH, RS, Q, valid, sid_arr, False))))
@@ -310,6 +330,8 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
             pending.clear()
         elif sl and "ON" in kinds:
             risk_on = True
+            if GOLD in hold:
+                sell(i, GOLD, hold[GOLD], "GOLD_EXIT")
         elif "OFF" in kinds:
             for k in list(hold):
                 sell(i, k, hold[k], "RISKOFF")
@@ -358,7 +380,8 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
                             stops[k] = (1 - sl_pct) * C[i, k]
         if sl and i in red_sig:
             for k in hold:
-                stops[k] = (1 - sl_pct) * px(i, k)
+                if k != GOLD:
+                    stops[k] = (1 - sl_pct) * px(i, k)
         # retry pending buys (not on the day they were just queued)
         if risk_on and pending and not ("OFF" in kinds):
             eq = equity(i)
@@ -483,4 +506,5 @@ if __name__ == "__main__":
         sys.exit(__doc__)
     run(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "v5_out",
         (int(sys.argv[4]), float(sys.argv[5])) if len(sys.argv) > 5 else (4, 3.0),
-        sys.argv[6] if len(sys.argv) > 6 else "liquidate")
+        sys.argv[6] if len(sys.argv) > 6 else "liquidate",
+        gold_csv=sys.argv[7] if len(sys.argv) > 7 else None)
