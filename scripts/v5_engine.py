@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """STAR RSI SHARPE 2.0 - V5 engine (see rulebook).
 
-usage: v5_engine.py <pit_parquet> <smallcap_weekly_csv> [out_dir]
+usage: v5_engine.py <pit_parquet> <smallcap_weekly_csv> [out_dir [atr_period mult [mode]]]
 
 Parquet columns: date, sid, sym, close (a row's presence == available price and
 PIT membership).  Fractional shares, T+1 close execution, FIFO tax, cash interest.
@@ -31,9 +31,11 @@ def cost_rate(d, buy):
 
 # ----------------------------------------------------------------- signals
 def load_signals(pq):
-    df = pd.read_parquet(pq, columns=["date", "sid", "close"])
+    df = pd.read_parquet(pq, columns=["date", "sid", "open", "low", "close"])
     df = df[df.close > 0]
     close = df.pivot(index="date", columns="sid", values="close").sort_index()
+    opn = df.pivot(index="date", columns="sid", values="open").reindex(close.index)
+    low = df.pivot(index="date", columns="sid", values="low").reindex(close.index)
     dates = close.index
     ret = close / close.shift(1) - 1
     ret = ret.replace([np.inf, -np.inf], np.nan)
@@ -61,7 +63,7 @@ def load_signals(pq):
         rsi_w.loc[s.index, c] = r
     rsi_w.index = pd.DatetimeIndex(last_sess.values)
     rsi = rsi_w.reindex(dates.union(rsi_w.index)).ffill().reindex(dates)
-    return close, sharpe, rsi, quar
+    return close, sharpe, rsi, quar, opn.values, low.values
 
 
 def supertrend_states(csv, period=4, mult=3.0):
@@ -148,9 +150,19 @@ class Tax:
 
 
 # ----------------------------------------------------------------- backtest
-def run(pq, csv, out):
-    close, sharpe, rsi, quar = load_signals(pq)
-    states = supertrend_states(csv)
+def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05):
+    """mode: liquidate (rulebook V5) | sl_none | sl_replace.
+
+    sl_*: on a risk-off flip nothing is sold; every holding gets a strict stop at
+    (1 - sl_pct) x its close on the flip's signal date, tested against the daily low
+    (filled at the stop, or at the open if it gaps below).  Risk-on cancels the stops
+    and resumes the normal monthly strategy (no rebuild).  While risk-off, monthly
+    decisions are suspended; sl_replace additionally buys the top-ranked new
+    candidate(s) at T+1 close for each slot a stop frees (stop = 5% below entry).
+    """
+    close, sharpe, rsi, quar, OPN, LOW = load_signals(pq)
+    states = supertrend_states(csv, *st)
+    sl = mode != "liquidate"
     dates = list(close.index.date)
     T, sids = len(dates), list(close.columns)
     C = close.values
@@ -179,6 +191,8 @@ def run(pq, csv, out):
         return bisect_right(dates, d) - 1
 
     events = {}  # exec idx -> list of events
+    red_sig = set()
+    stops, stop_hits = {}, 0
     for f, on in chg:
         if f < dates[0]:
             continue
@@ -187,9 +201,11 @@ def run(pq, csv, out):
         if ex >= T:
             continue
         if on:
-            events.setdefault(ex, []).append(("ON", select(sig, set(), SH, RS, Q, valid, sid_arr, True)))
+            plan = None if sl else select(sig, set(), SH, RS, Q, valid, sid_arr, True)
+            events.setdefault(ex, []).append(("ON", plan))
         else:
             events.setdefault(ex, []).append(("OFF", None))
+            red_sig.add(sig)
     # monthly decisions are generated on the fly (need holdings at signal date)
     monthly = {}
     by_month = {}
@@ -217,13 +233,13 @@ def run(pq, csv, out):
     def px(i, k):
         return C[i, k] if valid[i, k] else last[i, k]
 
-    def sell(i, k, qty, tag):
+    def sell(i, k, qty, tag, price=None):
         nonlocal cash, notional
         d = dates[i]
         qty = min(qty, hold.get(k, 0.0))
         if qty <= 1e-12:
             return
-        p = px(i, k)
+        p = px(i, k) if price is None else price
         net = qty * p * (1 - cost_rate(d, False))
         cash += net
         notional += qty * p
@@ -276,7 +292,25 @@ def run(pq, csv, out):
                 ("MON", select(i, set(hold), SH, RS, Q, valid, sid_arr, False, hold_ids=set(hold))))
         evs = events.get(i, []) + monthly_plans.get(i, [])
         kinds = [e[0] for e in evs]
-        if "OFF" in kinds:
+        if sl:
+            if "ON" in kinds:
+                stops.clear()
+            hit = 0
+            for k in list(hold):
+                if k in stops and valid[i, k] and LOW[i, k] <= stops[k]:
+                    sell(i, k, hold[k], "STOPLOSS", min(stops[k], OPN[i, k]))
+                    del stops[k]
+                    hit += 1
+            stop_hits += hit
+            if hit and mode == "sl_replace":
+                monthly_plans.setdefault(i + 1, []).append(
+                    ("REPL", (hit, select(i, set(hold), SH, RS, Q, valid, sid_arr, False))))
+        if sl and "OFF" in kinds:
+            risk_on = False
+            pending.clear()
+        elif sl and "ON" in kinds:
+            risk_on = True
+        elif "OFF" in kinds:
             for k in list(hold):
                 sell(i, k, hold[k], "RISKOFF")
             pending.clear()
@@ -313,6 +347,18 @@ def run(pq, csv, out):
                 v = hold[k] * px(i, k)
                 if v < target * (1 - 1e-9) and valid[i, k]:
                     buy(i, k, target - v, "TOPUP")
+        if sl and not risk_on:
+            for e in evs:
+                if e[0] == "REPL":
+                    n, plan = e[1]
+                    eq = equity(i)
+                    for k in plan["buys"][:n]:
+                        if valid[i, k] and k not in hold:
+                            buy(i, k, eq / SLOTS, "REPLACE")
+                            stops[k] = (1 - sl_pct) * C[i, k]
+        if sl and i in red_sig:
+            for k in hold:
+                stops[k] = (1 - sl_pct) * px(i, k)
         # retry pending buys (not on the day they were just queued)
         if risk_on and pending and not ("OFF" in kinds):
             eq = equity(i)
@@ -387,6 +433,9 @@ def run(pq, csv, out):
         "annualized_turnover_x": round(turnover, 2),
         "total_tax_paid": round(tax.paid, 2),
         "final_partial_year_tax": round(final_tax, 2),
+        "mode": mode,
+        "supertrend": list(st),
+        "stop_loss_hits": stop_hits,
         "trade_legs": len(trades),
         "cash_call_state_changes_in_window": sum(1 for f, _ in chg if f >= dates[0] and next_idx(f) < T),
     }
@@ -432,4 +481,6 @@ def select(i, held, SH, RS, Q, valid, sid_arr, rebuild, hold_ids=None):
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         sys.exit(__doc__)
-    run(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "v5_out")
+    run(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "v5_out",
+        (int(sys.argv[4]), float(sys.argv[5])) if len(sys.argv) > 5 else (4, 3.0),
+        sys.argv[6] if len(sys.argv) > 6 else "liquidate")
