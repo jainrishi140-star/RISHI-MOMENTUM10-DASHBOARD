@@ -216,5 +216,55 @@
   "stock_supertrend_exits": 2284,
   "trade_legs": 5275,
   "cash_call_state_changes_in_window": 33
+ },
+ "43_stw_exit": {
+  "first_invested_date": "2007-09-17",
+  "final_date": "2026-09-04",
+  "first_invested_nav": 10652014.69,
+  "final_post_tax_value": 164640177.84,
+  "post_tax_cagr_pct": 15.53,
+  "volatility_pct": 11.52,
+  "sharpe": 0.97,
+  "sortino": 1.4,
+  "max_drawdown_pct": -18.63,
+  "calmar": 0.96,
+  "fifo_win_rate_pct": 53.48,
+  "annualized_turnover_x": 7.8,
+  "total_tax_paid": 24773128.84,
+  "final_partial_year_tax": 0.0,
+  "mode": "stw_exit",
+  "supertrend": [
+   4,
+   3.0
+  ],
+  "stop_loss_hits": 0,
+  "stock_supertrend_exits": 1188,
+  "trade_legs": 4415,
+  "cash_call_state_changes_in_window": 33
+ },
+ "43_stw_exit_filter": {
+  "first_invested_date": "2007-09-17",
+  "final_date": "2026-09-04",
+  "first_invested_nav": 10652014.69,
+  "final_post_tax_value": 192259423.37,
+  "post_tax_cagr_pct": 16.48,
+  "volatility_pct": 12.3,
+  "sharpe": 1.0,
+  "sortino": 1.44,
+  "max_drawdown_pct": -24.55,
+  "calmar": 0.78,
+  "fifo_win_rate_pct": 56.24,
+  "annualized_turnover_x": 7.08,
+  "total_tax_paid": 30230306.6,
+  "final_partial_year_tax": 0.0,
+  "mode": "stw_exit_filter",
+  "supertrend": [
+   4,
+   3.0
+  ],
+  "stop_loss_hits": 0,
+  "stock_supertrend_exits": 1015,
+  "trade_legs": 4223,
+  "cash_call_state_changes_in_window": 33
  }
 }

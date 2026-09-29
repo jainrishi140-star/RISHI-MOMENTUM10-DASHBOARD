@@ -107,6 +107,75 @@ def stock_supertrend_red(pq, index, sids, period=2, mult=1.0):
     return red
 
 
+def _st_core(h, l, c, period, mult):
+    """Supertrend on one bar series -> (red bool[n], up-trend lower band fl[n])."""
+    n = len(c)
+    red = np.zeros(n, bool)
+    fl_out = np.full(n, np.nan)
+    if n <= period:
+        return red, fl_out
+    tr = np.empty(n)
+    tr[0] = h[0] - l[0]
+    tr[1:] = np.maximum.reduce([h[1:] - l[1:], abs(h[1:] - c[:-1]), abs(l[1:] - c[:-1])])
+    atr = tr[:period].mean()
+    fu = fl = 0.0
+    up = True
+    for i in range(period - 1, n):
+        if i >= period:
+            atr = (atr * (period - 1) + tr[i]) / period
+        hl2 = (h[i] + l[i]) / 2
+        bu, bl = hl2 + mult * atr, hl2 - mult * atr
+        if i == period - 1:
+            fu, fl = bu, bl
+        else:
+            pc = c[i - 1]
+            fu = bu if (bu < fu or pc > fu) else fu
+            fl = bl if (bl > fl or pc < fl) else fl
+            if up and c[i] < fl:
+                up = False
+            elif not up and c[i] > fu:
+                up = True
+        red[i] = not up
+        fl_out[i] = fl
+    return red, fl_out
+
+
+def stock_weekly_supertrend_exit(pq, index, sids, period=2, mult=1.0):
+    """Per-stock WEEKLY Supertrend(period, mult) exit flag (T x N, daily).
+
+    A held stock is flagged (sell at that day's close) when
+      * the last completed weekly bar is red, or
+      * its daily close is below the last completed week's up-trend line, or
+      * it is the week's last session and that week's own bar closes red.
+    """
+    df = pd.read_parquet(pq, columns=["date", "sid", "high", "low", "close"])
+    df = df[df.close > 0].sort_values(["sid", "date"])
+    col = {s: j for j, s in enumerate(sids)}
+    mon = (df.date - pd.to_timedelta(df.date.dt.weekday, unit="D")).values
+    df = df.assign(wk=mon)
+    flag = np.zeros((len(index), len(sids)), bool)
+    for sid, g in df.groupby("sid", sort=False):
+        if sid not in col or len(g) < 10:
+            continue
+        h, l, c = g.high.values, g.low.values, g.close.values
+        _, inv = np.unique(g.wk.values, return_inverse=True)
+        n = len(c)
+        starts = np.r_[0, np.flatnonzero(np.diff(inv)) + 1]
+        ends = np.r_[starts[1:] - 1, n - 1]
+        red_w, fl_w = _st_core(np.maximum.reduceat(h, starts), np.minimum.reduceat(l, starts),
+                               c[ends], period, mult)
+        prev = inv - 1
+        ok = prev >= 0
+        ex = np.zeros(n, bool)
+        pv = prev[ok]
+        ex[ok] = red_w[pv] | (c[ok] < fl_w[pv])
+        last = np.zeros(n, bool)
+        last[ends] = True
+        ex |= last & red_w[inv]
+        flag[index.get_indexer(pd.DatetimeIndex(g.date.values)), col[sid]] = ex
+    return flag
+
+
 def supertrend_states(csv, period=4, mult=3.0):
     b = pd.read_csv(csv, parse_dates=["time"])
     b["fri"] = b.time.apply(lambda t: (t + timedelta(days=4 - t.weekday())).date())
@@ -193,7 +262,8 @@ class Tax:
 # ----------------------------------------------------------------- backtest
 def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None):
     """mode: liquidate (rulebook V5) | sl_none | sl_replace | sl_gold
-    | st_exit | st_exit_filter (per-stock daily Supertrend(2,1) exit; freed cash idles).
+    | st_exit | st_exit_filter (per-stock daily Supertrend(2,1) exit; freed cash idles)
+    | stw_exit | stw_exit_filter (same on weekly bars).
 
     sl_*: on a risk-off flip nothing is sold; every holding gets a strict stop at
     (1 - sl_pct) x its close on the flip's signal date, tested against the daily low
@@ -232,8 +302,10 @@ def run(pq, csv, out, st=(4, 3.0), mode="liquidate", sl_pct=0.05, gold_csv=None)
     st_red = None
     if mode.startswith("st_exit"):
         st_red = stock_supertrend_red(pq, close.index, sids)
+    elif mode.startswith("stw_exit"):
+        st_red = stock_weekly_supertrend_exit(pq, close.index, sids)
     # candidate mask: quarantine (+ red stock Supertrend when entry filter is on)
-    Qsel = Q | st_red if mode == "st_exit_filter" else Q
+    Qsel = Q | st_red if mode.endswith("_filter") else Q
 
     # cash-call changes -> (signal friday, new_state)
     chg = []
