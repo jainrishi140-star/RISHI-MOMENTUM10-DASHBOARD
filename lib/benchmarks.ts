@@ -3,7 +3,7 @@
 // scripts/snapshot-benchmarks.mjs (daily GitHub Action).
 
 import { fetchSheetRows, TABS } from "./sheet";
-import { computeLiveNav, parseHoldings, todayIST } from "./portfolio";
+import { computeLiveNav, parseHoldings, parseRealised, todayIST } from "./portfolio";
 
 const REPO_RAW_BASE =
   "https://raw.githubusercontent.com/jainrishi140-star/RISHI-MOMENTUM10-DASHBOARD/main/data";
@@ -71,6 +71,7 @@ export interface SiblingStrategyDef {
   sheetId: string; // sibling's own Google Sheet -- lets us splice ITS live NAV too
   color: string;
   dash?: string;
+  realisedTab?: string; // sibling's booked-trades tab, if it keeps one
 }
 
 // Other RISHI forward-test books (e.g. MOM10, MOM20), plotted as extra lines
@@ -101,7 +102,13 @@ export async function fetchSiblingStrategies(
 
       try {
         const holdRows = await fetchSheetRows(d.sheetId, TABS.holdings);
-        const { nav } = computeLiveNav(parseHoldings(holdRows));
+        let realised = 0;
+        if (d.realisedTab) {
+          try {
+            realised = parseRealised(await fetchSheetRows(d.sheetId, d.realisedTab)).total;
+          } catch {}
+        }
+        const { nav } = computeLiveNav(parseHoldings(holdRows), realised);
         const livePoint = { date: today, value: nav };
         if (series.length && series[series.length - 1].date === today) series = [...series.slice(0, -1), livePoint];
         else if (!series.length || today > series[series.length - 1].date) series = [...series, livePoint];

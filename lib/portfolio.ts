@@ -122,6 +122,56 @@ export function parseHoldings(rows: string[][]): { rows: HoldingRow[]; total: Ho
   return { rows: out, total };
 }
 
+export interface RealisedRow {
+  date: string;
+  ticker: string;
+  shares: string;
+  buyPrice: string;
+  sellPrice: string;
+  cost: string;
+  proceeds: string;
+  pnl: string;
+  pnlPct: string;
+  note: string;
+}
+
+// "Realised" tab: manually kept log of booked trades (rebalance exits).
+// Guards against gviz's fallback -- a missing tab silently returns the first
+// tab instead of an error -- by requiring the tab's own title cell.
+export function parseRealised(rows: string[][]): { total: number; rows: RealisedRow[] } {
+  if (!(rows[0]?.[0] ?? "").trim().toUpperCase().startsWith("REALISED")) return { total: 0, rows: [] };
+  const totalIdx = rows.findIndex((r) => (r[0] ?? "").trim().toLowerCase().startsWith("total realised"));
+  const headerIdx = findRow(rows, "Date");
+  const out: RealisedRow[] = [];
+  for (let r = headerIdx + 1; r < rows.length; r++) {
+    if (!parseSheetDate(cell(rows, r, 0))) continue;
+    out.push({
+      date: cell(rows, r, 0),
+      ticker: cell(rows, r, 1),
+      shares: cell(rows, r, 2),
+      buyPrice: cell(rows, r, 3),
+      sellPrice: cell(rows, r, 4),
+      cost: cell(rows, r, 5),
+      proceeds: cell(rows, r, 6),
+      pnl: cell(rows, r, 7),
+      pnlPct: cell(rows, r, 8),
+      note: cell(rows, r, 9),
+    });
+  }
+  const total = totalIdx >= 0 ? toNumber(cell(rows, totalIdx, 1)) : out.reduce((a, x) => a + toNumber(x.pnl), 0);
+  return { total, rows: out };
+}
+
+// Day % for one holding, from the sheet's Day P&L: dayPnl / (value - dayPnl)
+// = today's move on yesterday's value.
+export function dayPct(h: HoldingRow): string {
+  const cv = toNumber(h.currentValue);
+  const d = toNumber(h.dayPnl);
+  const prev = cv - d;
+  if (!h.cmp || prev <= 0) return "";
+  return formatPct(d / prev);
+}
+
 export interface MomentumRow {
   ticker: string;
   name: string;
@@ -239,14 +289,21 @@ export interface DashboardData {
 // math computeDashboard uses for the hero tiles, factored out so a sibling
 // strategy plotted as a benchmark line (see lib/benchmarks.ts) can compute
 // its own live NAV the same way, from its own Holdings tab.
-export function computeLiveNav(holdings: { rows: HoldingRow[]; total: HoldingRow | null }): {
+//
+// Cash = start - cost of what is held now + realised P&L: exits roll proceeds
+// (cost + booked gain) back into cash, so a book that has rebalanced holds
+// more/less cash than start - cost basis alone.
+export function computeLiveNav(
+  holdings: { rows: HoldingRow[]; total: HoldingRow | null },
+  realisedPnl = 0
+): {
   nav: number;
   portfolioReturn: number;
 } {
   const total = holdings.total;
   const costBasis = total ? toNumber(total.costBasis) : 0;
   const currentValue = total ? toNumber(total.currentValue) : 0;
-  const cash = START_CAPITAL - costBasis;
+  const cash = START_CAPITAL - costBasis + realisedPnl;
   const nav = cash + currentValue;
   return { nav, portfolioReturn: nav / START_CAPITAL - 1 };
 }
@@ -262,7 +319,8 @@ export function computeDashboard(
   holdings: { rows: HoldingRow[]; total: HoldingRow | null },
   rebalance: { nextDate: string; rows: RebalanceRow[] },
   momentum: MomentumRow[],
-  overweightThreshold = 0.15 // 15% on the 10-stock book; the 20-stock book uses 8% (Settings!OVERWEIGHT)
+  overweightThreshold = 0.15, // 15% on the 10-stock book; the 20-stock book uses 8% (Settings!OVERWEIGHT)
+  realisedPnl = 0
 ): DashboardData {
   const total = holdings.total;
   const costBasis = total ? toNumber(total.costBasis) : 0;
@@ -270,8 +328,8 @@ export function computeDashboard(
   const unrealisedPnl = total ? toNumber(total.unrealisedPnl) : 0;
   const dayPnl = total ? toNumber(total.dayPnl) : 0;
 
-  const { nav, portfolioReturn } = computeLiveNav(holdings);
-  const cash = START_CAPITAL - costBasis;
+  const { nav, portfolioReturn } = computeLiveNav(holdings, realisedPnl);
+  const cash = START_CAPITAL - costBasis + realisedPnl;
   const totalPnl = nav - START_CAPITAL;
 
   const weights = holdings.rows.map((h) => toFraction(h.actualWt)).filter((w) => w > 0);
@@ -313,6 +371,7 @@ export function computeDashboard(
     ],
     pnlReturn: [
       { label: "Unrealised P&L", value: formatMoney(unrealisedPnl) },
+      { label: "Realised P&L (booked)", value: formatMoney(realisedPnl) },
       { label: "Total Portfolio P&L", value: formatMoney(totalPnl) },
       { label: "Portfolio Return %", value: formatPct(portfolioReturn) },
       { label: "Today's P&L", value: formatMoney(dayPnl) },

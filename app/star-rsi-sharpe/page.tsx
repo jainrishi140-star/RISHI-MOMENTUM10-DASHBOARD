@@ -14,6 +14,8 @@ export default function StarRsiSharpe() {
       sheetId={SHEET_ID}
       navHistoryFile="nav-history-star-rsi-sharpe.json"
       overweightThreshold={0.08}
+      realisedTab="Realised"
+      hideMonitorTables
       title="STAR RSI SHARPE — Forward Test"
       subtitle="20-stock, equal-weight book on ₹1,00,00,000. Universe = RSI-scanner drilldown names, ranked by trailing 12M Sharpe, screened to drop any name with >20 circuit-locked days in the last year. Entry frozen once at first run, whole shares, weekly-Wednesday rebalance to equal weight, benchmarked against the Nifty 500."
       siblingStrategies={[

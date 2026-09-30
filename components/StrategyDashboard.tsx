@@ -15,6 +15,9 @@ import {
   parseHoldings,
   parseMomentum,
   parseRebalance,
+  parseRealised,
+  dayPct,
+  type RealisedRow,
   buildNavPoints,
   parseSheetDate,
   todayIST,
@@ -58,6 +61,11 @@ export interface StrategyDashboardProps {
   title: string;
   subtitle: string;
   siblingStrategies?: SiblingStrategyDef[];
+  // Name of a manually-kept "Realised" tab (booked trades). When set, Total P&L
+  // includes booked gains and a Rebalance History section is shown.
+  realisedTab?: string;
+  // Hide the Momentum Monitor / next-Rebalance tables.
+  hideMonitorTables?: boolean;
 }
 
 export default async function StrategyDashboard({
@@ -68,6 +76,8 @@ export default async function StrategyDashboard({
   title,
   subtitle,
   siblingStrategies = [],
+  realisedTab,
+  hideMonitorTables = false,
 }: StrategyDashboardProps) {
   let error: string | null = null;
   let dashboard: ReturnType<typeof computeDashboard> | null = null;
@@ -76,6 +86,7 @@ export default async function StrategyDashboard({
   let rebalance: ReturnType<typeof parseRebalance> | null = null;
   let nav: ReturnType<typeof buildNavPoints> = [];
   let benchmarks: BenchmarkSeries[] = [];
+  let realised: { total: number; rows: RealisedRow[] } = { total: 0, rows: [] };
   let fetchedAt = "";
 
   try {
@@ -87,7 +98,14 @@ export default async function StrategyDashboard({
     holdings = parseHoldings(holdRows);
     momentum = parseMomentum(momRows);
     rebalance = parseRebalance(rebalRows);
-    dashboard = computeDashboard(holdings, rebalance, momentum, overweightThreshold);
+    if (realisedTab) {
+      try {
+        realised = parseRealised(await fetchSheetRows(sheetId, realisedTab));
+      } catch {
+        // No booked trades readable -- fall back to an unrebalanced book.
+      }
+    }
+    dashboard = computeDashboard(holdings, rebalance, momentum, overweightThreshold, realised.total);
     fetchedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
   } catch (e: any) {
     error = e?.message ?? String(e);
@@ -139,6 +157,13 @@ export default async function StrategyDashboard({
     if (nav[nav.length - 1].date === today) nav = [...nav.slice(0, -1), livePoint];
     else if (today > nav[nav.length - 1].date) nav = [...nav, livePoint];
   }
+
+  // Names entered after the book's first entry date = bought at a rebalance.
+  const entryIso = (h: { entryDate: string }) => parseSheetDate(h.entryDate) ?? "";
+  const firstEntry = holdings?.rows.map(entryIso).filter(Boolean).sort()[0] ?? "";
+  const newBuys = (holdings?.rows ?? [])
+    .filter((h) => entryIso(h) > firstEntry)
+    .sort((a, b) => (entryIso(a) < entryIso(b) ? 1 : -1));
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-zinc-50 font-sans dark:bg-black">
@@ -261,6 +286,7 @@ export default async function StrategyDashboard({
                     <th className="px-4 py-2.5 font-medium">Value</th>
                     <th className="px-4 py-2.5 font-medium">P&L</th>
                     <th className="px-4 py-2.5 font-medium">P&L %</th>
+                    <th className="px-4 py-2.5 font-medium">Day %</th>
                     <th className="px-4 py-2.5 font-medium">Day P&L</th>
                     <th className="px-4 py-2.5 font-medium">Wt</th>
                   </tr>
@@ -275,6 +301,7 @@ export default async function StrategyDashboard({
                       <td className="px-4 py-2 tabular-nums">{h.currentValue}</td>
                       <td className={`px-4 py-2 tabular-nums ${pnlClass(h.unrealisedPnl)}`}>{h.unrealisedPnl}</td>
                       <td className={`px-4 py-2 tabular-nums ${pnlClass(h.pnlPct)}`}>{h.pnlPct}</td>
+                      <td className={`px-4 py-2 tabular-nums ${pnlClass(dayPct(h))}`}>{dayPct(h)}</td>
                       <td className={`px-4 py-2 tabular-nums ${pnlClass(h.dayPnl)}`}>{h.dayPnl}</td>
                       <td className="px-4 py-2 tabular-nums">{h.actualWt}</td>
                     </tr>
@@ -292,7 +319,7 @@ export default async function StrategyDashboard({
                         {holdings.total.unrealisedPnl}
                       </td>
                       <td className="px-4 py-2.5" />
-                      <td className="px-4 py-2.5" />
+                      <td className={`px-4 py-2.5 tabular-nums ${pnlClass(holdings.total.dayPnl)}`}>{holdings.total.dayPnl}</td>
                       <td className="px-4 py-2.5 tabular-nums">{holdings.total.actualWt}</td>
                     </tr>
                   </tfoot>
@@ -302,8 +329,90 @@ export default async function StrategyDashboard({
           </div>
         )}
 
+        {/* ======================= REBALANCE HISTORY ======================= */}
+        {realisedTab && holdings && (realised.rows.length > 0 || newBuys.length > 0) && (
+          <div className="mt-12">
+            <SectionLabel>Rebalance History</SectionLabel>
+            {realised.rows.length > 0 && (
+              <div className="mb-6">
+                <div className="mb-2 flex items-baseline justify-between text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  <span>Booked (sold)</span>
+                  <span className={`tabular-nums ${pnlClass(String(realised.total))}`}>
+                    Realised P&L {realised.total < 0 ? "-" : ""}₹{Math.round(Math.abs(realised.total)).toLocaleString("en-US")}
+                  </span>
+                </div>
+                <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
+                      <tr>
+                        <th className="px-4 py-2.5 font-medium">Date</th>
+                        <th className="px-4 py-2.5 font-medium">Ticker</th>
+                        <th className="px-4 py-2.5 font-medium">Shares</th>
+                        <th className="px-4 py-2.5 font-medium">Buy</th>
+                        <th className="px-4 py-2.5 font-medium">Sell</th>
+                        <th className="px-4 py-2.5 font-medium">Gain / Loss</th>
+                        <th className="px-4 py-2.5 font-medium">%</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                      {realised.rows.map((r, i) => (
+                        <tr key={i} className="text-zinc-800 dark:text-zinc-200">
+                          <td className="px-4 py-2 tabular-nums">{r.date}</td>
+                          <td className="px-4 py-2 font-medium">{r.ticker.replace("NSE:", "")}</td>
+                          <td className="px-4 py-2 tabular-nums">{r.shares}</td>
+                          <td className="px-4 py-2 tabular-nums">{r.buyPrice}</td>
+                          <td className="px-4 py-2 tabular-nums">{r.sellPrice}</td>
+                          <td className={`px-4 py-2 tabular-nums ${pnlClass(r.pnl)}`}>{r.pnl}</td>
+                          <td className={`px-4 py-2 tabular-nums ${pnlClass(r.pnlPct)}`}>{r.pnlPct}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {newBuys.length > 0 && (
+              <div>
+                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Newly bought
+                </div>
+                <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
+                      <tr>
+                        <th className="px-4 py-2.5 font-medium">Date</th>
+                        <th className="px-4 py-2.5 font-medium">Ticker</th>
+                        <th className="px-4 py-2.5 font-medium">Shares</th>
+                        <th className="px-4 py-2.5 font-medium">Buy</th>
+                        <th className="px-4 py-2.5 font-medium">CMP</th>
+                        <th className="px-4 py-2.5 font-medium">Day %</th>
+                        <th className="px-4 py-2.5 font-medium">Gain / Loss</th>
+                        <th className="px-4 py-2.5 font-medium">%</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                      {newBuys.map((h) => (
+                        <tr key={h.ticker} className="text-zinc-800 dark:text-zinc-200">
+                          <td className="px-4 py-2 tabular-nums">{h.entryDate}</td>
+                          <td className="px-4 py-2 font-medium">{h.ticker.replace("NSE:", "")}</td>
+                          <td className="px-4 py-2 tabular-nums">{h.shares}</td>
+                          <td className="px-4 py-2 tabular-nums">{h.entryPrice}</td>
+                          <td className="px-4 py-2 tabular-nums">{h.cmp}</td>
+                          <td className={`px-4 py-2 tabular-nums ${pnlClass(dayPct(h))}`}>{dayPct(h)}</td>
+                          <td className={`px-4 py-2 tabular-nums ${pnlClass(h.unrealisedPnl)}`}>{h.unrealisedPnl}</td>
+                          <td className={`px-4 py-2 tabular-nums ${pnlClass(h.pnlPct)}`}>{h.pnlPct}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ============================ MOMENTUM =========================== */}
-        {momentum.length > 0 && (
+        {!hideMonitorTables && momentum.length > 0 && (
           <div className="mt-12">
             <SectionLabel>Momentum Monitor</SectionLabel>
             <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">
@@ -352,7 +461,7 @@ export default async function StrategyDashboard({
         )}
 
         {/* =========================== REBALANCE ========================== */}
-        {rebalance && rebalance.rows.length > 0 && (
+        {!hideMonitorTables && rebalance && rebalance.rows.length > 0 && (
           <div className="mt-12">
             <SectionLabel>Rebalance — next {rebalance.nextDate || "Wednesday"}</SectionLabel>
             <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-black/90">

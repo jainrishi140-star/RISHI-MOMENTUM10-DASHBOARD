@@ -74,9 +74,22 @@ async function fetchHoldingsTotal(sheetId) {
   };
 }
 
+// Booked P&L from the optional "Realised" tab (0 if the sheet has none --
+// gviz returns the first tab for an unknown name, so check the title cell).
+async function fetchRealisedPnl(sheetId) {
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Realised`;
+  const res = await fetch(url);
+  if (!res.ok) return 0;
+  const rows = parseCsv(await res.text());
+  if (!(rows[0]?.[0] ?? "").trim().toUpperCase().startsWith("REALISED")) return 0;
+  const t = rows.find((r) => (r[0] ?? "").trim().toLowerCase().startsWith("total realised"));
+  return t ? toNumber(t[1]) : 0;
+}
+
 async function snapshotOne(strategy) {
   const { costBasis, currentValue } = await fetchHoldingsTotal(strategy.sheetId);
-  const cash = START_CAPITAL - costBasis;
+  const realised = await fetchRealisedPnl(strategy.sheetId);
+  const cash = START_CAPITAL - costBasis + realised;
   const nav = cash + currentValue;
 
   // IST calendar date, not UTC -- the snapshot represents end-of-trading-day India time.
