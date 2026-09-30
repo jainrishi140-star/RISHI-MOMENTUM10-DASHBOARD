@@ -33,7 +33,7 @@ c.push(P([B('Bottom line: '),'over the 18 live months the strategy did not impro
  [B('Drawdown. '),'Max drawdown -1,422 pts (unhedged) and -1,155 pts (hedged) versus -777 pts in the backtest. The drawdown began at the 27 Jan 2026 peak; unhedged took 231 days to recover, hedged had not fully recovered by 30 Sep 2026.'],
  [B('The one tail event. '),'3 Feb 2026 produced a single-trade loss of -798 pts (backtest worst: -318). The hedge returned +221 pts that day, cutting the worst day to -576 pts. Excluding that one trade, unhedged live would show +1,696 pts (about 94/month, 60% of the backtest rate).'],
  [B('Hedge economics. '),'The hedge book made -467 pts in total (16% win rate on 256 legs); excluding 3 Feb it lost -689 pts. It reduced max drawdown by about 19% but lowered return / drawdown (0.63 to 0.37).'],
- [B('Fidelity to the SSR model. '),'259 of 278 live trades match a model trade; per-trade points correlate 0.99 and average execution difference is -1.2 pts per trade (-310 pts cumulative, of which -81 is one early exit on 2 Mar 2026). Live is 190 pts behind the model in total.'],
+ [B('Fidelity to the SSR model. '),'259 of 278 live trades match a model trade; per-trade points correlate 0.99 and average execution difference is -1.2 pts per trade (-310 pts cumulative, of which -81 is one early exit on 2 Mar 2026). Live is 190 pts behind the model in total. Named slippage events are listed in section 5.1.'],
  [B('Periods with no live trades. '),'Zubin\'s sabbatical leave for CFA (17 Jul - 2 Sep 2025 and 30 Apr - 24 May 2026) and discretionary shorts skipped (5 - 17 Mar 2026). The model made +155, +370 and -553 pts in those windows respectively, net -28 pts, so these gaps were close to neutral overall but concentrated risk in the timing (see section 6).'],
 ].forEach(t=>c.push(bl(t)));
 c.push(pb());
@@ -113,10 +113,24 @@ c.push(sp());
  'Largest per-trade deviations: 2 Mar 2026 (live 185 vs model 266, exited 4 Mar rather than 10 Mar, -81), 30 Mar 2026 (-44), 2 May 2025 (-36), 24 Sep 2026 (+83: live held the short to 28 Sep and bought back at 7.6, while the model exited at 89 on 25 Sep).',
  'Skipped or unmatched trades mostly reflect the flagged no-trade periods and a small number of strike substitutions (live-only trades), which largely offset each other.',
 ].forEach(t=>c.push(bl(t)));
+c.push(H2('5.1 Slippage events and reasons'));
+c.push(P('Four events were flagged with a reported slippage. The table sets the reported figure next to the difference the logs themselves show between the live trade and the matching SSR model trade (live points minus model points; negative means live was worse).'));
+c.push(table(['Date','Trade (short)','Reported slippage (pts)','Log-implied vs model (pts)','Reason'],[
+['26 May 2025','25,050 PE, exit 27 May (live -149.7 vs model -114)','not stated','-35.7','CTCL issue'],
+['5 Jun 2025','24,750 PE, same-day exit (live +41.9 vs model +50)','8','-8.1','Slippage (reason not given)'],
+['3 Feb 2026','24,950 CE, exit 3 Feb (live -797.8 vs model -768)','27','-29.8','Manual exit'],
+['18 Aug 2026','24,250 CE, same-day exit (live +28.6 vs model +30)','50.3','-1.4','Reason not given'],
+],[1400,3400,1500,1706,1900]));
+c.push(sp());
+[
+ 'The first three events reconcile with the logs (reported 8 and 27 pts against -8.1 and -29.8). Together the 26 May 2025, 5 Jun 2025 and 3 Feb 2026 trades account for about -74 pts of the -310 pts cumulative execution difference; the rest is spread over many small differences plus the early exit on 2 Mar 2026 (-81 pts).',
+ 'The 3 Feb 2026 manual exit cost 27 pts on a trade that lost -798 pts, so the manual exit did not change the outcome of that tail event.',
+ 'The 18 Aug 2026 slippage of 50.3 pts is reported by the desk but is not visible in the trade logs: live and model differ by only -1.4 pts on that day, and the live log shows no trade with a 50-pt gap to the model. If it applies, the live log or the model log for that day needs checking (for example a different fill or trade not recorded).',
+].forEach(t=>c.push(bl(t)));
 c.push(...img('deviation_vs_model.png',640,'Figure 4. Live (unhedged) minus SSR model, cumulative points, with execution difference on matched trades'));
 c.push(...img('matched_scatter.png',360,'Figure 5. Matched trades: live vs model points'));
 c.push(...img('monthly_points.png',640,'Figure 6. Monthly points: live unhedged, live hedged, SSR model'));
-c.push(H2('5.1 Monthly points'));
+c.push(H2('5.2 Monthly points'));
 const mon=JSON.parse(fs.readFileSync('monthly.json'));
 c.push(table(['Month','Live unhedged','Hedge','Live hedged','SSR model','Live - model'],mon.map(m=>[m.m,...[m.u,m.h,m.lh,m.s,m.d].map(v=>(v>0?'+':'')+Math.round(v).toLocaleString('en-US'))]),[1500,1700,1500,1700,1700,1806]));
 c.push(pb());
