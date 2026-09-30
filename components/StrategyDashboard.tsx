@@ -205,11 +205,12 @@ export default async function StrategyDashboard({
         {dashboard && (
           <>
             {/* ============================= HERO ============================= */}
-            <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-5">
               {[
                 { label: "NAV", value: dashboard.nav },
                 { label: "Total P&L", value: dashboard.totalPnl },
                 { label: "Today's P&L", value: dashboard.todayPnl },
+                { label: "Today's %", value: dashboard.todayPct },
                 { label: "Portfolio Return", value: dashboard.portfolioReturn },
               ].map((h) => (
                 <div

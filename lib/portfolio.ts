@@ -277,6 +277,7 @@ export interface DashboardData {
   navRaw: number;
   totalPnl: string;
   todayPnl: string;
+  todayPct: string;
   portfolioReturn: string;
   portfolioReturnRaw: number;
   capitalValue: KV[];
@@ -359,6 +360,8 @@ export function computeDashboard(
     navRaw: nav,
     totalPnl: formatMoney(totalPnl),
     todayPnl: formatMoney(dayPnl),
+    // today's move on yesterday's NAV
+    todayPct: nav - dayPnl > 0 ? formatPct(dayPnl / (nav - dayPnl)) : "",
     portfolioReturn: formatPct(portfolioReturn),
     portfolioReturnRaw: portfolioReturn,
     capitalValue: [
@@ -375,6 +378,7 @@ export function computeDashboard(
       { label: "Total Portfolio P&L", value: formatMoney(totalPnl) },
       { label: "Portfolio Return %", value: formatPct(portfolioReturn) },
       { label: "Today's P&L", value: formatMoney(dayPnl) },
+      { label: "Today's %", value: nav - dayPnl > 0 ? formatPct(dayPnl / (nav - dayPnl)) : "" },
       { label: "Best / Worst name", value: `${best}  /  ${worst}` },
     ],
     riskConcentration: [
