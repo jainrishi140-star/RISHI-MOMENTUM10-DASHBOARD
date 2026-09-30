@@ -1,0 +1,18 @@
+{
+  "first_invested_date": "2007-09-17",
+  "final_date": "2026-09-04",
+  "first_invested_nav": 10652014.69,
+  "final_post_tax_value": 585699255.17,
+  "post_tax_cagr_pct": 23.53,
+  "volatility_pct": 14.87,
+  "sharpe": 1.31,
+  "sortino": 1.89,
+  "max_drawdown_pct": -25.98,
+  "calmar": 1.05,
+  "fifo_win_rate_pct": 69.71,
+  "annualized_turnover_x": 3.67,
+  "total_tax_paid": 101393440.93,
+  "final_partial_year_tax": 0.0,
+  "trade_legs": 3484,
+  "cash_call_state_changes_in_window": 33
+}
