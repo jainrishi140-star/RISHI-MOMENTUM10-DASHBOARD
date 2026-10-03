@@ -34,7 +34,7 @@ c.push(P([B('Bottom line: '),'over the 18 live months the strategy did not impro
  [B('The one tail event. '),'3 Feb 2026 produced a single-trade loss of -798 pts (backtest worst: -318). The hedge returned +221 pts that day, cutting the worst day to -576 pts. Excluding that one trade, unhedged live would show +1,696 pts (about 94/month, 60% of the backtest rate).'],
  [B('Hedge economics. '),'The hedge book made -467 pts in total (16% win rate on 256 legs); excluding 3 Feb it lost -689 pts. It reduced max drawdown by about 19% but lowered return / drawdown (0.63 to 0.37).'],
  [B('Fidelity to the SSR model. '),'259 of 278 live trades match a model trade; per-trade points correlate 0.99 and average execution difference is -1.2 pts per trade (-310 pts cumulative, of which -81 is one early exit on 2 Mar 2026). Live is 190 pts behind the model in total. Named slippage events are listed in section 5.1.'],
- [B('Periods with no live trades. '),'Zubin\'s sabbatical leave for CFA (17 Jul - 2 Sep 2025 and 30 Apr - 24 May 2026) and discretionary shorts skipped (5 - 17 Mar 2026). The model made +155, +370 and -553 pts in those windows respectively, net -28 pts, so these gaps were close to neutral overall but concentrated risk in the timing (see section 6).'],
+ [B('Periods with no live trades. '),'Zubin\'s sabbatical leave for CFA (17 Jul - 2 Sep 2025 and 30 Apr - 24 May 2026) and discretionary shorts skipped (5 - 17 Mar 2026). The model (unhedged) made +155, +370 and -553 pts in those windows respectively, net -28 pts. On a hedged basis the April - May 2026 window was -475 pts (the hedge adds +78), so the net becomes +50 pts. Either way the gaps were close to neutral overall but concentrated risk in the timing (see section 6).'],
 ].forEach(t=>c.push(bl(t)));
 c.push(pb());
 c.push(H1('2. Data and methodology'));
@@ -135,19 +135,20 @@ const mon=JSON.parse(fs.readFileSync('monthly.json'));
 c.push(table(['Month','Live unhedged','Hedge','Live hedged','SSR model','Live - model'],mon.map(m=>[m.m,...[m.u,m.h,m.lh,m.s,m.d].map(v=>(v>0?'+':'')+Math.round(v).toLocaleString('en-US'))]),[1500,1700,1500,1700,1700,1806]));
 c.push(pb());
 c.push(H1('6. Flagged periods with no live trades'));
-c.push(P('Three periods in the live log have no trades although the model kept signalling. They are flagged below with the reason supplied. Points are the SSR model result for trades that were not taken in the window.'));
-c.push(table(['Period','Reason flagged','Model trades','Model wins','Model points not captured','Effect on live'],[
-['17 Jul - 2 Sep 2025','Zubin\'s sabbatical leave (CFA)','27','14','+155','Missed profit'],
-['5 - 17 Mar 2026','Discretionary shorts skipped','4','4','+370','Missed profit'],
-['30 Apr - 24 May 2026','Zubin\'s sabbatical leave (CFA)','17','4','-553','Avoided loss'],
-['Total','','48','22','-28','Approximately neutral'],
-],[1900,2200,1100,1000,1806,1900]));
+c.push(P('Three periods in the live log have no trades although the model kept signalling. They are flagged below with the reason supplied. Points are the SSR model result for trades that were not taken in the window. For 30 Apr - 24 May 2026 the hedged result of those missed trades (-475 pts) was supplied; hedged figures for the other two windows are not available, so their unhedged values are used in the hedged total.'));
+c.push(table(['Period','Reason flagged','Model trades','Model wins','Model pts not captured (unhedged)','Model pts incl. hedge','Effect on live'],[
+['17 Jul - 2 Sep 2025','Zubin\'s sabbatical leave (CFA)','27','14','+155','n/a (+155 used)','Missed profit'],
+['5 - 17 Mar 2026','Discretionary shorts skipped','4','4','+370','n/a (+370 used)','Missed profit'],
+['30 Apr - 24 May 2026','Zubin\'s sabbatical leave (CFA)','17','4','-553','-475','Avoided loss (-553 unhedged, -475 hedged)'],
+['Total','','48','22','-28','+50','Approximately neutral'],
+],[1650,1900,900,800,1500,1500,1656]));
 c.push(sp());
 c.push(...img('flagged_periods.png',640,'Figure 7. Flagged periods over the SSR model and live unhedged equity curves'));
 [
- 'Net effect is only -28 model points, so the gaps did not change the overall result materially. Their effect on the path was large: the missed March 2026 rally in the model (+370 pts in four trades, all winners) coincided with the deepest live drawdown, and the pause from 30 Apr avoided a -553 pt stretch in which only 4 of 17 model trades won.',
+ 'Net effect is only -28 model points unhedged (+50 on a hedged basis), so the gaps did not change the overall result materially. Their effect on the path was large: the missed March 2026 rally in the model (+370 pts in four trades, all winners) coincided with the deepest live drawdown, and the pause from 30 Apr avoided a stretch in which only 4 of 17 model trades won: -553 pts unhedged, or -475 pts once the hedge is included (the hedge would have recovered 78 pts of it).',
+ 'Indicative effect of the gaps: had live also traded all three windows, unhedged live would be about 870 pts (898 - 28) and hedged live about 481 pts (431 + 50). The hedge effect is known only for the April - May 2026 window, so the hedged figure is approximate. The live hedge log itself holds just two legs in that window (30 Apr and 4 May, about +17 pts raw), which are already inside the live hedged result.',,
  'Live was about 865 pts below the model on 28 Apr 2026 and had narrowed that to about 310 pts by 20 May 2026, purely by sitting out the weak stretch. This is luck of timing, not a systematic edge, and should not be extrapolated.',
- 'Sabbatical periods leave the strategy unattended and exposed to whichever regime follows; the July - September 2025 gap missed +155 pts and the April - May 2026 gap avoided -553 pts, opposite results from the same cause.',
+ 'Sabbatical periods leave the strategy unattended and exposed to whichever regime follows; the July - September 2025 gap missed +155 pts and the April - May 2026 gap avoided -553 pts (-475 with hedge), opposite results from the same cause.',
  'The 29 Apr 2026 trade (24,300 PE) was logged open at -39.5 pts with no exit. It has been closed at the model exit (-185 pts, exit 30 Apr) as confirmed, which lowers live results by 145 pts versus the earlier draft.',
 ].forEach(t=>c.push(bl(t)));
 c.push(pb());

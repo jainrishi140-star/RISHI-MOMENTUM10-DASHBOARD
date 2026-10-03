@@ -45,7 +45,7 @@ for i,(k,c) in enumerate((('Live unhedged',BLUE),('Live hedged',ORANGE),('SSR mo
 ax.axhline(0,color='#52514e',lw=.8); ax.set_xticks(x); ax.set_xticklabels(mon.index,rotation=45,fontsize=8); ax.legend(frameon=False,ncol=3,loc='lower left'); ax.grid(axis='x',visible=False)
 ax.set_title('Monthly points (by exit date)',loc='left',fontweight='bold'); plt.tight_layout(); plt.savefig('monthly_points.png',dpi=140); plt.close()
 # 3 flagged periods
-fl=[('2025-07-17','2025-09-02','Sabbatical leave\n(CFA) - Zubin','#eb6834'),('2026-03-05','2026-03-17','Discretionary\nshorts skipped','#8a3ffc'),('2026-04-30','2026-05-24','Sabbatical leave\n(CFA) - Zubin','#eb6834')]
+fl=[('2025-07-17','2025-09-02','Sabbatical leave\n(CFA) - Zubin','#eb6834'),('2026-03-05','2026-03-17','Discretionary\nshorts skipped','#8a3ffc'),('2026-04-30','2026-05-24','Sabbatical leave (CFA)\nmodel -553 / -475\nwith hedge','#eb6834')]
 fig,ax=plt.subplots(figsize=(13,4.8))
 ax.plot(eq.index,eq['SSR model'],color=GREY,lw=2,ls='--',label='SSR model'); ax.plot(eq.index,eq['Live unhedged'],color=BLUE,lw=2,label='Live unhedged')
 top=eq['SSR model'].max()

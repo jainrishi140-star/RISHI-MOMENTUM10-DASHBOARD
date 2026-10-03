@@ -145,7 +145,10 @@ def gap_label(d):
     if pd.Timestamp('2026-04-30') <= d.Entry < pd.Timestamp('2026-05-25'): return 'Apr30-May24 2026 (no live trades)'
     return 'other (isolated skips)'
 model_only = model_only.assign(gap=model_only.apply(gap_label, axis=1))
+HEDGED_SUPPLIED = {'Apr30-May24 2026 (no live trades)': -475.0}   # hedged result of missed model trades, supplied by desk
 gap_tab = model_only.groupby('gap')['Pts'].agg(['count', 'sum']).rename(columns={'count': 'model trades not in live', 'sum': 'model pts not captured'})
+gap_tab['model pts incl. hedge (supplied)'] = gap_tab.index.map(HEDGED_SUPPLIED)
+gap_tab['hedge effect (pts)'] = gap_tab['model pts incl. hedge (supplied)'] - gap_tab['model pts not captured']
 dev = {'model trades': len(S), 'live trades': len(L), 'matched': len(P),
        'model-only (live missed)': len(model_only), 'model-only pts': model_only.Pts.sum(),
        'live-only trades': len(live_only), 'live-only pts': live_only.Pts.sum(),
