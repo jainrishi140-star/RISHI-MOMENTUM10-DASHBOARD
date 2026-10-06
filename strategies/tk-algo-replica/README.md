@@ -129,10 +129,53 @@ that reverses within the same chart candle is therefore not drawn, but the state
 
 In Python, pass `--fast-1m <1m export>` to `verify`, `backtest` or `checklog` to get the same lock.
 
+## Matching the original TK TF Combined statistics
+
+Target, from the original's Combined log on a 1m chart. Compute it with
+`python3 tk_algo.py logstats TK_TF_Combined.csv [--from ...] [--to ...]`. ROI % is per trade and
+not compounded. Max drawdown is the largest fall of cumulative ROI % from its peak.
+
+| Period | Trades | Total ROI | Avg ROI / year | Avg ROI / trade | Win % | Profit factor | Max drawdown |
+|--------|--------|-----------|----------------|-----------------|-------|---------------|--------------|
+| 2009-02 → 2026-09 | 2,336 | 441.3% | 25.0% | 0.189% | 31.9% | 1.65 | 12.5% |
+| 2020-01 → 2026-09 |   904 | 153.6% | 23.0% | 0.170% | 31.4% | 1.62 | 10.6% |
+
+**What has been verified so far.** Fast needs 1m prices, and 1m data is only available for
+Jul → Oct 2026, so the match was tested in two pieces:
+
+1. **Slow over 2020 → 2026.** The replica's Slow (from 30m data) was combined with the
+   original's Fast signals from `TK_TF_Fast.csv`. Prices at Fast signal times were rebuilt from
+   the log's own ROI figures; the rebuild reproduces the original's statistics exactly when fed
+   the original's own Slow log.
+
+   | 2020-01 → 2026-09 | Trades | Total ROI | Avg/yr | Avg/trade | Win % | PF | Max DD |
+   |---|---|---|---|---|---|---|---|
+   | Original log                 | 904 | 153.6% | 23.0% | 0.170% | 31.4% | 1.62 | 10.6% |
+   | Replica Slow + original Fast | 900 | 155.4% | 23.3% | 0.173% | 32.1% | 1.63 | 11.6% |
+
+   894 of the 905 trades are identical.
+
+2. **Full replica on the 1m chart, Jul → Sep 2026.** Trades and statistics are the same as the
+   original indicator's own signals over that period (15 trades, ROI, PF and drawdown equal to 0.1%).
+
+**Full-period check (2009 → 2026).** The original's log appears to be a TradingView
+strategy-tester trade list from a 1m chart, so the same test is available for the replica:
+
+1. Add `tk_replica_strategy.pine` to a **1m NSE:NIFTY** chart.
+2. In the Strategy Tester, turn on **Deep Backtesting** from 2009-02-03.
+3. Read the results: net profit ÷ 1,00,000 = total ROI %, max drawdown ÷ 1,00,000 = max drawdown %,
+   and profit factor as shown.
+4. Compare with the target table above, or export the trade list and send it back for a
+   trade-by-trade comparison.
+
+Alternatively, run `tk_algo.py backtest` on any 1m NIFTY OHLC file covering 2009 → 2026.
+
 ## Files
 
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
   and `backtest` (replica or `--original` columns), all using the original's fill convention.
+- `tk_replica_strategy.pine`: the same signals as a TradingView strategy (always in the market,
+  fills at the next candle's open) for Deep Backtesting against the original's statistics.
 - `tk_replica.pine`: TradingView Pine v6 indicator with Slow/Fast/Combined, labels, alerts and a
   status table. Signals are final at candle close; set alerts to "Once Per Bar Close".
 

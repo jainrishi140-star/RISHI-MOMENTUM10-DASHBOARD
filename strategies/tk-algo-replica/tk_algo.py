@@ -19,6 +19,10 @@ Usage:
     python tk_algo.py backtest  <tv_export.csv> [--htf <30m_export.csv>] [--fast-1m <1m_export.csv>]
                                 [--original] [--cost 0.02] [--out trades.csv]
     python tk_algo.py checklog  <tv_export.csv> <trade_log.csv> --signal Slow|Fast|Combined [--htf ...]
+    python tk_algo.py logstats  <trade_log.csv> [--from 2020-01-01] [--to 2026-09-30]
+
+backtest and logstats print the same statistics (total ROI, average yearly ROI, average ROI per
+trade, win rate, profit factor, max drawdown), so the replica can be compared with the original.
 """
 import argparse
 import re
@@ -175,6 +179,27 @@ def check_log(df, sig, log, col, warmup_days=10):
           f"({len(hit) / max(len(lg), 1):.1%})")
 
 
+def summarize(roi, times):
+    """Statistics on per-trade ROI % (non-compounded, like the original's logs). Max drawdown is
+    the largest drop of the cumulative ROI % from its running peak, starting from 0."""
+    roi = np.asarray(roi, dtype=float)
+    times = pd.to_datetime(pd.Series(times))
+    wins = roi > 0
+    equity = np.r_[0.0, np.cumsum(roi)]
+    years = max((times.max() - times.min()).days / 365.25, 1e-9)
+    loss_sum = -roi[~wins].sum()
+    return {"trades": len(roi), "total_roi": roi.sum(), "avg_yearly_roi": roi.sum() / years,
+            "avg_trade_roi": roi.mean(), "win_rate": wins.mean() * 100,
+            "profit_factor": roi[wins].sum() / loss_sum if loss_sum else float("inf"),
+            "max_drawdown": (np.maximum.accumulate(equity) - equity).max(), "years": years}
+
+
+def print_summary(label, st):
+    print(f"{label:9s}: {st['trades']} trades over {st['years']:.2f} yrs | total ROI {st['total_roi']:.1f}% | "
+          f"avg/yr {st['avg_yearly_roi']:.1f}% | avg/trade {st['avg_trade_roi']:.3f}% | "
+          f"win {st['win_rate']:.1f}% | PF {st['profit_factor']:.2f} | max DD {st['max_drawdown']:.1f}%")
+
+
 def backtest(df, sig, col="Combined", cost=0.0):
     """Always-in-market reversal, filled at the open of the bar after the signal
     (the original's convention). ROI % per trade on spot; `cost` is % per side."""
@@ -190,21 +215,15 @@ def backtest(df, sig, col="Combined", cost=0.0):
     if len(trades) == 0:
         print(f"{col}: no completed trades")
         return trades
-    wins = roi > 0
-    equity = np.cumsum(roi)
-    max_dd = (np.maximum.accumulate(equity) - equity).max()
-    loss_sum = -roi[~wins].sum()
-    print(f"{col:9s}: {len(roi)} trades | net {pts.sum():.0f} pts | sum ROI {roi.sum():.1f}% | "
-          f"win rate {wins.mean():.1%} | avg win {roi[wins].mean():.2f}% | "
-          f"avg loss {roi[~wins].mean():.2f}% | profit factor "
-          f"{(roi[wins].sum() / loss_sum) if loss_sum else float('inf'):.2f} | max drawdown {max_dd:.1f}%")
+    print_summary(col, summarize(roi, trades.entry_time))
     return trades
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["verify", "backtest", "checklog"])
-    ap.add_argument("csv", help="TradingView export of NSE:NIFTY (time, open, high, low, close, ...)")
+    ap.add_argument("mode", choices=["verify", "backtest", "checklog", "logstats"])
+    ap.add_argument("csv", help="TradingView export of NSE:NIFTY (time, open, high, low, close, ...), "
+                                "or the trade log in logstats mode")
     ap.add_argument("log", nargs="?", help="original trade log (checklog mode)")
     ap.add_argument("--htf", help="30m TradingView export (longer Slow EMA history)")
     ap.add_argument("--fast-1m", help="1m export: lock Fast (and Combined) to the 1m timeframe")
@@ -213,7 +232,16 @@ if __name__ == "__main__":
                     help="backtest the original indicator's exported columns instead of the replica")
     ap.add_argument("--cost", type=float, default=0.0, help="cost per side in %% (e.g. 0.02)")
     ap.add_argument("--out", help="save the trade list of --signal to this CSV")
+    ap.add_argument("--from", dest="date_from", help="first date to include, e.g. 2020-01-01")
+    ap.add_argument("--to", dest="date_to", help="last date to include, e.g. 2026-09-30")
     a = ap.parse_args()
+    lo = pd.Timestamp(a.date_from) if a.date_from else pd.Timestamp.min
+    hi = pd.Timestamp(a.date_to) + pd.Timedelta(days=1) if a.date_to else pd.Timestamp.max
+    if a.mode == "logstats":
+        log = load_log(a.csv).dropna(subset=["roi"])
+        log = log[(log.time >= lo) & (log.time < hi)]
+        print_summary("Log", summarize(log.roi, log.time))
+        raise SystemExit
     df = load(a.csv)
     fast_df = load(a.fast_1m) if a.fast_1m else None
     if fast_df is not None:  # Fast/Combined only exist where 1m data exists
@@ -225,6 +253,7 @@ if __name__ == "__main__":
         check_log(df, sig, load_log(a.log), a.signal)
     else:
         df = df[df.index >= df.index[0] + pd.Timedelta(days=10)]  # indicator warm-up
+        df = df[(df.index >= lo) & (df.index < hi)]
         sig = df[["Slow", "Fast", "Combined"]].fillna(0) if a.original else sig.loc[df.index]
         print(f"Backtest {df.index[0]} -> {df.index[-1]} | cost {a.cost}% per side")
         trades = {c: backtest(df, sig, c, a.cost) for c in ["Slow", "Fast", "Combined"]}

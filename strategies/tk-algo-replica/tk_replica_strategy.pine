@@ -1,0 +1,135 @@
+//@version=6
+// TK Replica as a TradingView STRATEGY, for comparing its statistics with the original TK TF
+// Combined trade log (2009-2026, 1m chart). Same signal code as tk_replica.pine.
+//
+// How the original's log was built, and how this strategy reproduces it:
+//   - always in the market: every Combined signal reverses the position
+//   - filled at the OPEN of the candle after the signal candle (TradingView's default fill)
+//   - ROI % per trade on spot NSE:NIFTY, not compounded
+// Each trade uses a fixed 1,00,00,000 (1 crore) of capital (large, so whole-unit rounding is
+// negligible), so in the Strategy Tester:
+//   Net profit / 1,00,000              = total ROI %          (original: 441.3% for 2009-2026)
+//   Max drawdown (currency) / 1,00,000 = max drawdown %       (original: 12.5%)
+//   Avg trade / 1,00,000               = avg ROI % per trade  (original: 0.189%)
+//   Profit factor                      = profit factor        (original: 1.65)
+// Run it on a 1m NSE:NIFTY chart with Deep Backtesting, from 2009-02-03.
+strategy("TK Replica Strategy", shorttitle = "TK Replica Strat", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0)
+
+grpS = "Signal source"
+useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the original's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
+altSym = input.symbol("NSE:NIFTY1!", "Signal symbol", group = grpS)
+
+grpP = "Parameters"
+slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
+slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
+slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
+fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the original's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the original does.")
+
+grpD = "Display"
+showSlow = input.bool(false, "Slow signals", group = grpD, inline = "sig")
+showFast = input.bool(false, "Fast signals", group = grpD, inline = "sig")
+showComb = input.bool(true, "Combined signals", group = grpD, inline = "sig")
+showEma  = input.bool(true, "Plot Slow EMA", group = grpD)
+showBg   = input.bool(true, "Shade Combined state", group = grpD)
+showTbl  = input.bool(true, "Status table", group = grpD)
+
+sym = useAlt ? altSym : syminfo.tickerid
+
+leadEma(float src, float a) =>
+    var float v = na
+    v := na(v) ? src : a * src + (1 - a) * v
+    v
+
+slowState() => math.sign(leadEma(hlc3, slowLead) - ta.ema(hlc3, slowLen))
+slowEma()   => ta.ema(hlc3, slowLen)
+
+// Weights fitted on the 30m + 5m charts and validated on the 3m and 1m charts
+fastState() =>
+    float b = ta.ema(hlc3, 113)
+    float score = 0.0128 * (hlc3 - b) - 0.0381 * (ta.ema(hlc3, 5) - b) + 0.0198 * (ta.ema(hlc3, 10) - b) + 0.1147 * (ta.ema(hlc3, 20) - b) - 0.6092 * (ta.ema(hlc3, 40) - b) + 0.5811 * (ta.ema(hlc3, 60) - b) + 1.0 * (ta.ema(hlc3, 80) - b) + 0.4886 * (ta.ema(hlc3, 100) - b) - 0.2437 * (ta.ema(hlc3, 120) - b) - 0.7241 * (ta.ema(hlc3, 140) - b) - 0.8173 * (ta.ema(hlc3, 160) - b) - 0.1915 * (ta.ema(hlc3, 200) - b) + 0.5852 * (ta.ema(hlc3, 250) - b) - 0.1643 * (ta.ema(hlc3, 300) - b)
+    math.sign(score)
+
+// Slow: the 30m value appears on the chart candle that closes with the 30m candle (e.g. the 09:44
+// candle on a 1m chart, closing at 09:45), exactly as the original shows it.
+float slow = request.security(sym, slowTf, slowState())
+float slowLine = request.security(sym, slowTf, slowEma())
+
+// Fast: when locked to a timeframe below the chart's, read every intrabar Fast value and replay
+// the Combined rule bar by bar, so Combined matches what the locked timeframe's chart would show.
+// Inside a chart bar, Slow keeps its previous value until the last intrabar, the one that closes
+// the 30m candle (exact for charts from 1m to 30m).
+string fastReqTf  = fastTf == "" or timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(fastTf) ? timeframe.period : fastTf
+bool   fastLocked = fastReqTf != timeframe.period
+float  fastChart  = request.security(sym, timeframe.period, fastState())
+array<float> fastIntra = request.security_lower_tf(sym, fastReqTf, fastState())
+
+var float fast = na
+var float comb = 0.0
+if fastLocked
+    int n = array.size(fastIntra)
+    if n > 0
+        for i = 0 to n - 1
+            float f = array.get(fastIntra, i)
+            float s = i == n - 1 ? slow : nz(slow[1])
+            if s == f and s != 0
+                comb := s
+        fast := array.get(fastIntra, n - 1)
+else
+    fast := fastChart
+    if slow == fast and slow != 0
+        comb := slow
+
+flipUp(float s) => s == 1 and nz(s[1]) == -1
+flipDn(float s) => s == -1 and nz(s[1]) == 1
+
+combBuy  = flipUp(comb)
+combSell = flipDn(comb)
+slowBuy  = flipUp(slow)
+slowSell = flipDn(slow)
+fastBuy  = flipUp(fast)
+fastSell = flipDn(fast)
+
+plot(showEma ? slowLine : na, "Slow EMA (30m HLC3)", color = color.new(color.orange, 0), linewidth = 2)
+bgcolor(showBg and comb == 1 ? color.new(color.teal, 90) : showBg and comb == -1 ? color.new(color.red, 90) : na)
+
+plotshape(showComb and combBuy,  "Combined BUY",  shape.labelup,   location.belowbar, color.new(color.teal, 0), text = "BUY",  textcolor = color.white, size = size.small)
+plotshape(showComb and combSell, "Combined SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),  text = "SELL", textcolor = color.white, size = size.small)
+plotshape(showSlow and slowBuy,  "Slow BUY",  shape.triangleup,   location.belowbar, color.new(color.blue, 0),   text = "S", size = size.tiny)
+plotshape(showSlow and slowSell, "Slow SELL", shape.triangledown, location.abovebar, color.new(color.maroon, 0), text = "S", size = size.tiny)
+plotshape(showFast and fastBuy,  "Fast BUY",  shape.circle, location.belowbar, color.new(color.aqua, 0),   text = "F", size = size.tiny)
+plotshape(showFast and fastSell, "Fast SELL", shape.circle, location.abovebar, color.new(color.fuchsia, 0), text = "F", size = size.tiny)
+
+// Hidden plots so the values appear in the Data Window and CSV export, for comparison with the original
+plot(slow, "Slow", display = display.data_window)
+plot(fast, "Fast", display = display.data_window)
+plot(comb, "Combined", display = display.data_window)
+
+
+stateText(float s) => s == 1 ? "BULL" : s == -1 ? "BEAR" : "-"
+stateColor(float s) => s == 1 ? color.teal : s == -1 ? color.red : color.gray
+
+var table tbl = table.new(position.top_right, 2, 4, border_width = 1)
+if showTbl and barstate.islast
+    table.cell(tbl, 0, 0, "TK Replica", text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 1, 0, sym, text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 0, 1, "Slow (" + slowTf + ")")
+    table.cell(tbl, 1, 1, stateText(slow), text_color = color.white, bgcolor = stateColor(slow))
+    table.cell(tbl, 0, 2, "Fast (" + (fastLocked ? fastReqTf : "chart") + ")")
+    table.cell(tbl, 1, 2, stateText(fast), text_color = color.white, bgcolor = stateColor(fast))
+    table.cell(tbl, 0, 3, "Combined")
+    table.cell(tbl, 1, 3, stateText(comb), text_color = color.white, bgcolor = stateColor(comb))
+
+grpB = "Backtest"
+tradeSig = input.string("Combined", "Trade signal", options = ["Combined", "Slow", "Fast"], group = grpB)
+fromTime = input.time(timestamp("Asia/Kolkata", 2009, 2, 3, 0, 0), "Backtest from", group = grpB)
+toTime   = input.time(timestamp("Asia/Kolkata", 2099, 12, 31, 0, 0), "Backtest to", group = grpB)
+
+float sigState = tradeSig == "Combined" ? comb : tradeSig == "Slow" ? slow : fast
+bool inRange = time >= fromTime and time <= toTime
+// Trade only on a signal change, like the original's log (no entry on the first bar of the range)
+if inRange and flipUp(sigState)
+    strategy.entry("Long", strategy.long)
+if inRange and flipDn(sigState)
+    strategy.entry("Short", strategy.short)
+if not inRange and time > toTime
+    strategy.close_all()
