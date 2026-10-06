@@ -134,7 +134,7 @@ In Python, pass `--fast-1m <1m export>` to `verify`, `backtest` or `checklog` to
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
   and `backtest` (replica or `--original` columns), all using the original's fill convention.
 - `tk_replica.pine`: TradingView Pine v6 indicator with Slow/Fast/Combined, labels, alerts and a
-  status table. The default *Confirm Slow only on 30m close* setting avoids repainting.
+  status table. Signals are final at candle close; set alerts to "Once Per Bar Close".
 
 ```bash
 python3 tk_algo.py verify   NSE_NIFTY_1.csv --htf NSE_NIFTY_30.csv

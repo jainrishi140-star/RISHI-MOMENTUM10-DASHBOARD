@@ -8,6 +8,9 @@
 //   Fast     : sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113), on the "Fast timeframe"
 //              (default 1 minute, as in the original's logs; empty = chart timeframe, like the original)
 //   Combined : takes a new side only when Slow and Fast agree, otherwise keeps the previous side
+//
+// Use on a 1m-30m chart of NSE:NIFTY. Signals are final when the candle closes: set alerts to
+// "Once Per Bar Close".
 indicator("TK Replica (Slow / Fast / Combined)", shorttitle = "TK Replica", overlay = true)
 
 grpS = "Signal source"
@@ -18,7 +21,6 @@ grpP = "Parameters"
 slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
 slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
 slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
-noRepaint = input.bool(true, "Confirm Slow only on 30m close (no repaint)", group = grpP)
 fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the original's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the original does.")
 
 grpD = "Display"
@@ -45,12 +47,9 @@ fastState() =>
     float score = 0.0128 * (hlc3 - b) - 0.0381 * (ta.ema(hlc3, 5) - b) + 0.0198 * (ta.ema(hlc3, 10) - b) + 0.1147 * (ta.ema(hlc3, 20) - b) - 0.6092 * (ta.ema(hlc3, 40) - b) + 0.5811 * (ta.ema(hlc3, 60) - b) + 1.0 * (ta.ema(hlc3, 80) - b) + 0.4886 * (ta.ema(hlc3, 100) - b) - 0.2437 * (ta.ema(hlc3, 120) - b) - 0.7241 * (ta.ema(hlc3, 140) - b) - 0.8173 * (ta.ema(hlc3, 160) - b) - 0.1915 * (ta.ema(hlc3, 200) - b) + 0.5852 * (ta.ema(hlc3, 250) - b) - 0.1643 * (ta.ema(hlc3, 300) - b)
     math.sign(score)
 
-// Slow: on charts at or above the slow timeframe compute in place; below it, read the 30m series.
-// The non-repainting form shows a 30m bar's value from the first chart bar after that 30m bar closes.
-float slowLive = request.security(sym, slowTf, slowState())
-float slowConf = request.security(sym, slowTf, slowState()[1], lookahead = barmerge.lookahead_on)
-bool  htfIsChart = timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds(slowTf)
-float slow = htfIsChart or not noRepaint ? slowLive : slowConf
+// Slow: the 30m value appears on the chart candle that closes with the 30m candle (e.g. the 09:44
+// candle on a 1m chart, closing at 09:45), exactly as the original shows it.
+float slow = request.security(sym, slowTf, slowState())
 float slowLine = request.security(sym, slowTf, slowEma())
 
 // Fast: when locked to a timeframe below the chart's, read every intrabar Fast value and replay
@@ -69,7 +68,7 @@ if fastLocked
     if n > 0
         for i = 0 to n - 1
             float f = array.get(fastIntra, i)
-            float s = i == n - 1 ? slowLive : nz(slowLive[1])
+            float s = i == n - 1 ? slow : nz(slow[1])
             if s == f and s != 0
                 comb := s
         fast := array.get(fastIntra, n - 1)
