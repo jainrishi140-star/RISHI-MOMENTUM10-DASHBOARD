@@ -7,8 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          ID=1yU6YSzZcyAHlhH-4aFlrVNaiDOcT5afdvar1yuAaQCY
-          for t in Holdings Realised NAV; do
-            echo "=== $t"
-            curl -sSL "https://docs.google.com/spreadsheets/d/$ID/gviz/tq?tqx=out:csv&sheet=$t" | head -60
+          for ID in 1coh8Lbbw-K1dpZm5OPHhVtFcWZbAATGu-5-9Bt2KXac 1QDV04yw1Gb-hm0Y-K1NiDkyp-zyHm3jJQrOx-zZQTvU 1Ls5COhCkEEEtvFwqWvUxnwpj_NI8OwnIRuP3vK-KPkg; do
+            echo "=== $ID"
+            curl -sSL "https://docs.google.com/spreadsheets/d/$ID/gviz/tq?tqx=out:csv&sheet=Holdings" | cut -d, -f1,4,5,6,7,8,9,10,11,12,13,14 | head -40
           done
