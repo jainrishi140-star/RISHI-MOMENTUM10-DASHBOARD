@@ -71,7 +71,7 @@ export interface SiblingStrategyDef {
   sheetId: string; // sibling's own Google Sheet -- lets us splice ITS live NAV too
   color: string;
   dash?: string;
-  realisedTab?: string; // sibling's booked-trades tab, if it keeps one
+  realisedTab?: string; // sibling's booked-trades tab; defaults to "Realised" (0 if absent)
 }
 
 // Other RISHI forward-test books (e.g. MOM10, MOM20), plotted as extra lines
@@ -103,11 +103,9 @@ export async function fetchSiblingStrategies(
       try {
         const holdRows = await fetchSheetRows(d.sheetId, TABS.holdings);
         let realised = 0;
-        if (d.realisedTab) {
-          try {
-            realised = parseRealised(await fetchSheetRows(d.sheetId, d.realisedTab)).total;
-          } catch {}
-        }
+        try {
+          realised = parseRealised(await fetchSheetRows(d.sheetId, d.realisedTab ?? "Realised")).total;
+        } catch {}
         const { nav } = computeLiveNav(parseHoldings(holdRows), realised);
         const livePoint = { date: today, value: nav };
         if (series.length && series[series.length - 1].date === today) series = [...series.slice(0, -1), livePoint];

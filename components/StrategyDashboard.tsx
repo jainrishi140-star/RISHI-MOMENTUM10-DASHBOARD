@@ -61,8 +61,10 @@ export interface StrategyDashboardProps {
   title: string;
   subtitle: string;
   siblingStrategies?: SiblingStrategyDef[];
-  // Name of a manually-kept "Realised" tab (booked trades). When set, Total P&L
-  // includes booked gains and a Rebalance History section is shown.
+  // Name of a manually-kept "Realised" tab (booked trades). NAV / Total P&L
+  // always include booked P&L from a tab named "Realised" (0 if the sheet has
+  // none, matching scripts/snapshot-nav.mjs); passing this prop also shows the
+  // Rebalance History section.
   realisedTab?: string;
   // Hide the Momentum Monitor / next-Rebalance tables.
   hideMonitorTables?: boolean;
@@ -98,12 +100,10 @@ export default async function StrategyDashboard({
     holdings = parseHoldings(holdRows);
     momentum = parseMomentum(momRows);
     rebalance = parseRebalance(rebalRows);
-    if (realisedTab) {
-      try {
-        realised = parseRealised(await fetchSheetRows(sheetId, realisedTab));
-      } catch {
-        // No booked trades readable -- fall back to an unrebalanced book.
-      }
+    try {
+      realised = parseRealised(await fetchSheetRows(sheetId, realisedTab ?? "Realised"));
+    } catch {
+      // No booked trades readable -- fall back to an unrebalanced book.
     }
     dashboard = computeDashboard(holdings, rebalance, momentum, overweightThreshold, realised.total);
     fetchedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
