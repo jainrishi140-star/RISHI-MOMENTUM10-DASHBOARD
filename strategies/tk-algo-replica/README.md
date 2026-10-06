@@ -222,6 +222,31 @@ Both strategies stay profitable out of sample in all 10 variations (OOS PF 1.38-
 is weaker in recent years, though: the last 30% of the history (about 2021 → 2026) earns
 12-14% per year against 28-30% before. Note that 2026 is only up to September and is flat.
 
+### 50 time-period variations
+
+`python3 is_oos.py <original> <replica> --set 50 --out is_oos_50_results.csv` runs:
+- 15 forward anchored splits (OOS starting 2011 … 2025)
+- 15 backward anchored splits
+- 10 walk-forward configurations (2-6 year IS × 1-2 year OOS)
+- 10 sliding blocks (4 year IS → next 2 years OOS)
+
+The full table is in `is_oos_50_results.csv`.
+
+| Out-of-sample result over 50 variations | Original | Replica |
+|---|---|---|
+| OOS profitable | 50 / 50 | 50 / 50 |
+| OOS profit factor ≥ 1.2 / ≥ 1.4 | 50 / 46 | 50 / 45 |
+| Walk-forward efficiency ≥ 50% | 43 / 50 | 43 / 50 |
+| OOS ROI per year: median (min - max) | 22.1% (7.5 - 46.0) | 21.9% (7.8 - 46.3) |
+| OOS profit factor: median (min) | 1.62 (1.21) | 1.62 (1.22) |
+| Walk-forward efficiency: median (min) | 86% (28%) | 87% (29%) |
+| Worst OOS max drawdown | 12.5% | 12.8% |
+
+Replica vs original across all 50 OOS periods: ROI per year gap median 0.24, max 1.12 points;
+profit factor gap median 0.009, max 0.038; same-minute trade match median 89.2% (min 87.1%).
+The 7 variations with WFE < 50% all have the out-of-sample part in 2021-2026, the weaker
+recent period. Their OOS is still profitable (PF 1.21-1.43).
+
 ## Files
 
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
