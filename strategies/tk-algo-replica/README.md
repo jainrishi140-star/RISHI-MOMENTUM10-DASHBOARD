@@ -194,12 +194,41 @@ Trade timing: 89.1% of the original's trades are on the same minute, 96.7% withi
 by Fast match 60% exactly, and nearly all the rest are 1 minute early or late. Yearly ROI agrees
 within 2.3 points in every year from 2009 to 2026.
 
+## In-sample / out-of-sample test (10 variations)
+
+`python3 is_oos.py <original_trades.csv> <replica_trades.csv>` runs 10 IS/OOS designs on the two
+Deep Backtesting trade lists (2009 → 2026). WFE = OOS ROI per year ÷ IS ROI per year.
+
+| # | Variation | Original IS → OOS ROI/yr | Replica IS → OOS ROI/yr | OOS PF (orig / rep) | WFE (orig / rep) |
+|---|-----------|--------------------------|-------------------------|---------------------|------------------|
+| 1 | 50/50 chronological | 27.8 → 22.2 | 27.2 → 22.5 | 1.62 / 1.63 | 80% / 83% |
+| 2 | 60/40 chronological | 27.0 → 22.0 | 26.6 → 22.2 | 1.59 / 1.60 | 82% / 84% |
+| 3 | 70/30 chronological | 29.6 → 14.3 | 29.3 → 14.4 | 1.40 / 1.40 | 49% / 49% |
+| 4 | 80/20 chronological | 28.2 → 12.2 | 27.9 → 12.3 | 1.38 / 1.38 | 43% / 44% |
+| 5 | IS 2009-15 / OOS 2016-26 | 31.4 → 20.9 | 30.9 → 20.9 | 1.59 / 1.59 | 67% / 68% |
+| 6 | IS 2020-26 (replica fit) / OOS 2009-19 | 22.9 → 26.3 | 23.1 → 25.9 | 1.68 / 1.67 | 115% / 112% |
+| 7 | Backward: IS 2nd half / OOS 1st half | 22.2 → 27.8 | 22.5 → 27.2 | 1.69 / 1.67 | 125% / 121% |
+| 8 | IS odd years / OOS even years | 26.1 → 23.9 | 25.8 → 23.9 | 1.62 / 1.62 | 91% / 93% |
+| 9 | Walk-forward 3y → 1y (15 windows) | 24.7 → 21.1 | 24.5 → 21.1 | 1.59 / 1.59 | 86% / 86% |
+| 10 | Walk-forward 5y → 2y (7 windows) | 24.2 → 21.4 | 24.0 → 21.4 | 1.61 / 1.61 | 88% / 89% |
+
+The replica tracks the original in every variation: OOS ROI per year within 0.4 points, and OOS
+profit factor within 0.01. In every OOS period, 88–90% of the original's trades are hit on the
+same minute. Variation 6 is a true out-of-sample test of the replica itself, because its
+parameters were fitted on 2020-2026 only. On 2009-2019 it still reproduces the original
+(25.9 vs 26.3% per year, PF 1.67 vs 1.68).
+
+Both strategies stay profitable out of sample in all 10 variations (OOS PF 1.38-1.69). The edge
+is weaker in recent years, though: the last 30% of the history (about 2021 → 2026) earns
+12-14% per year against 28-30% before. Note that 2026 is only up to September and is flat.
+
 ## Files
 
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
   and `backtest` (replica or `--original` columns), all using the original's fill convention.
 - `tk_replica_strategy.pine`: the same signals as a TradingView strategy (always in the market,
   fills at the next candle's open) for Deep Backtesting against the original's statistics.
+- `is_oos.py`: 10-variation in-sample / out-of-sample test on two TradingView trade-list exports.
 - `tk_replica.pine`: TradingView Pine v6 indicator with Slow/Fast/Combined, labels, alerts and a
   status table. Signals are final at candle close; set alerts to "Once Per Bar Close".
 
