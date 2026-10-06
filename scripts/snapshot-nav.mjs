@@ -92,8 +92,14 @@ async function snapshotOne(strategy) {
   const cash = START_CAPITAL - costBasis + realised;
   const nav = cash + currentValue;
 
-  // IST calendar date, not UTC -- the snapshot represents end-of-trading-day India time.
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date()); // YYYY-MM-DD
+  // IST calendar date of the trading session being snapshotted. GitHub's cron
+  // often fires hours late (runs landing at 00:00-03:00 IST the next morning),
+  // and stamping those with the wall-clock date mislabels the session's close
+  // as the following day (and lets the next real run overwrite a day). Shift
+  // back 8h so anything before 08:00 IST still belongs to the previous day.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
+    new Date(Date.now() - 8 * 3600 * 1000)
+  ); // YYYY-MM-DD
 
   let history = [];
   try {
