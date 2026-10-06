@@ -170,6 +170,30 @@ strategy-tester trade list from a 1m chart, so the same test is available for th
 
 Alternatively, run `tk_algo.py backtest` on any 1m NIFTY OHLC file covering 2009 → 2026.
 
+## Deep Backtesting result: replica vs original, 2009 → 2026
+
+Both strategies were run with TradingView Deep Backtesting on a 1m NSE:NIFTY chart, Feb 2009 →
+Sep 2026, and compared on their exported trade lists (closed trades; ROI % per trade, not compounded).
+
+| Metric | Original TK TF Combined | Replica | Difference |
+|--------|-------------------------|---------|------------|
+| Closed trades | 2,330 | 2,324 | −6 |
+| Total ROI | 439.87% | 436.75% | −3.12 |
+| Avg ROI / year | 25.00% | 24.82% | −0.18 |
+| Avg ROI / trade | 0.189% | 0.188% | −0.001 |
+| Win rate | 31.89% | 31.80% | −0.09 |
+| Profit factor | 1.655 | 1.649 | −0.006 |
+| Max drawdown | 12.46% | 12.78% | +0.32 |
+| Avg win / avg loss | 1.495% / −0.423% | 1.501% / −0.424% | |
+| Net points | 42,995 | 42,996 | +2 |
+| Compounded ROI | 6,196% | 6,003% | −192 |
+| Compounded max drawdown | 11.99% | 12.27% | +0.28 |
+
+Trade timing: 89.1% of the original's trades are on the same minute, 96.7% within 1 minute and
+98.2% within 5 minutes. Trades driven by Slow (on the 30m marks) match 98.6% exactly. Trades driven
+by Fast match 60% exactly, and nearly all the rest are 1 minute early or late. Yearly ROI agrees
+within 2.3 points in every year from 2009 to 2026.
+
 ## Files
 
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
