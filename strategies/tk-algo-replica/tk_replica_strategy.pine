@@ -104,7 +104,6 @@ plot(slow, "Slow", display = display.data_window)
 plot(fast, "Fast", display = display.data_window)
 plot(comb, "Combined", display = display.data_window)
 
-
 stateText(float s) => s == 1 ? "BULL" : s == -1 ? "BEAR" : "-"
 stateColor(float s) => s == 1 ? color.teal : s == -1 ? color.red : color.gray
 
@@ -127,9 +126,11 @@ toTime   = input.time(timestamp("31 Dec 2099 00:00 +0530"), "Backtest to", group
 float sigState = tradeSig == "Combined" ? comb : tradeSig == "Slow" ? slow : fast
 bool inRange = time >= fromTime and time <= toTime
 // Trade only on a signal change, like the original's log (no entry on the first bar of the range)
-if inRange and flipUp(sigState)
+bool goLong  = flipUp(sigState)
+bool goShort = flipDn(sigState)
+if inRange and goLong
     strategy.entry("Long", strategy.long)
-if inRange and flipDn(sigState)
+if inRange and goShort
     strategy.entry("Short", strategy.short)
 if not inRange and time > toTime
     strategy.close_all()
