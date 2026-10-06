@@ -1,0 +1,92 @@
+//@version=6
+// In-house replica of the TK ALGO V1.1 Slow / Fast / Combined signals.
+// Reverse-engineered from TradingView exports of the original indicator's plots
+// (see README.md in this folder for the match statistics).
+//
+//   Slow     : 30m timeframe  -> sign( (H+L+2C)/4  -  EMA(HL2, 62) )
+//   Fast     : chart timeframe -> sign( EMA(HL2, 102) - EMA(HL2, 113) )
+//   Combined : takes a new side only when Slow and Fast agree, otherwise keeps the previous side
+indicator("TK Replica (Slow / Fast / Combined)", shorttitle = "TK Replica", overlay = true)
+
+grpS = "Signal source"
+useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Turn on to test the signals on futures, e.g. NSE:NIFTY1!. The original appears to read a futures-like feed.")
+altSym = input.symbol("NSE:NIFTY1!", "Signal symbol", group = grpS)
+
+grpP = "Parameters"
+slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
+slowLen   = input.int(62, "Slow EMA length (HL2)", minval = 1, group = grpP)
+fastLenA  = input.int(102, "Fast EMA A length (HL2)", minval = 1, group = grpP)
+fastLenB  = input.int(113, "Fast EMA B length (HL2)", minval = 1, group = grpP)
+noRepaint = input.bool(true, "Confirm Slow only on 30m close (no repaint)", group = grpP)
+
+grpD = "Display"
+showSlow = input.bool(false, "Slow signals", group = grpD, inline = "sig")
+showFast = input.bool(false, "Fast signals", group = grpD, inline = "sig")
+showComb = input.bool(true, "Combined signals", group = grpD, inline = "sig")
+showEma  = input.bool(true, "Plot Slow EMA", group = grpD)
+showBg   = input.bool(true, "Shade Combined state", group = grpD)
+showTbl  = input.bool(true, "Status table", group = grpD)
+
+sym = useAlt ? altSym : syminfo.tickerid
+
+slowState() => math.sign((high + low + 2 * close) / 4 - ta.ema(hl2, slowLen))
+slowEma()   => ta.ema(hl2, slowLen)
+fastState() => math.sign(ta.ema(hl2, fastLenA) - ta.ema(hl2, fastLenB))
+
+// Slow: on charts at or above the slow timeframe compute in place; below it, read the 30m series.
+// The non-repainting form shows a 30m bar's value from the first chart bar after that 30m bar closes.
+float slowLive = request.security(sym, slowTf, slowState())
+float slowConf = request.security(sym, slowTf, slowState()[1], lookahead = barmerge.lookahead_on)
+bool  htfIsChart = timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds(slowTf)
+float slow = htfIsChart or not noRepaint ? slowLive : slowConf
+float slowLine = request.security(sym, slowTf, slowEma())
+
+float fast = request.security(sym, timeframe.period, fastState())
+
+var float comb = 0.0
+if slow == fast and slow != 0
+    comb := slow
+
+flipUp(float s) => s == 1 and nz(s[1]) == -1
+flipDn(float s) => s == -1 and nz(s[1]) == 1
+
+combBuy  = flipUp(comb)
+combSell = flipDn(comb)
+slowBuy  = flipUp(slow)
+slowSell = flipDn(slow)
+fastBuy  = flipUp(fast)
+fastSell = flipDn(fast)
+
+plot(showEma ? slowLine : na, "Slow EMA (30m HL2)", color = color.new(color.orange, 0), linewidth = 2)
+bgcolor(showBg and comb == 1 ? color.new(color.teal, 90) : showBg and comb == -1 ? color.new(color.red, 90) : na)
+
+plotshape(showComb and combBuy,  "Combined BUY",  shape.labelup,   location.belowbar, color.new(color.teal, 0), text = "BUY",  textcolor = color.white, size = size.small)
+plotshape(showComb and combSell, "Combined SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),  text = "SELL", textcolor = color.white, size = size.small)
+plotshape(showSlow and slowBuy,  "Slow BUY",  shape.triangleup,   location.belowbar, color.new(color.blue, 0),   text = "S", size = size.tiny)
+plotshape(showSlow and slowSell, "Slow SELL", shape.triangledown, location.abovebar, color.new(color.maroon, 0), text = "S", size = size.tiny)
+plotshape(showFast and fastBuy,  "Fast BUY",  shape.circle, location.belowbar, color.new(color.aqua, 0),   text = "F", size = size.tiny)
+plotshape(showFast and fastSell, "Fast SELL", shape.circle, location.abovebar, color.new(color.fuchsia, 0), text = "F", size = size.tiny)
+
+// Hidden plots so the values appear in the Data Window and CSV export, for comparison with the original
+plot(slow, "Slow", display = display.data_window)
+plot(fast, "Fast", display = display.data_window)
+plot(comb, "Combined", display = display.data_window)
+
+alertcondition(combBuy,  "Combined BUY",  "TK Replica: Combined BUY on {{ticker}} at {{close}}")
+alertcondition(combSell, "Combined SELL", "TK Replica: Combined SELL on {{ticker}} at {{close}}")
+alertcondition(slowBuy,  "Slow BUY",  "TK Replica: Slow BUY on {{ticker}} at {{close}}")
+alertcondition(slowSell, "Slow SELL", "TK Replica: Slow SELL on {{ticker}} at {{close}}")
+
+stateText(float s) => s == 1 ? "BULL" : s == -1 ? "BEAR" : "-"
+stateColor(float s) => s == 1 ? color.teal : s == -1 ? color.red : color.gray
+
+var table tbl = table.new(position.top_right, 2, 4, border_width = 1)
+if showTbl and barstate.islast
+    table.cell(tbl, 0, 0, "TK Replica", text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 1, 0, sym, text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 0, 1, "Slow (" + slowTf + ")")
+    table.cell(tbl, 1, 1, stateText(slow), text_color = color.white, bgcolor = stateColor(slow))
+    table.cell(tbl, 0, 2, "Fast (chart)")
+    table.cell(tbl, 1, 2, stateText(fast), text_color = color.white, bgcolor = stateColor(fast))
+    table.cell(tbl, 0, 3, "Combined")
+    table.cell(tbl, 1, 3, stateText(comb), text_color = color.white, bgcolor = stateColor(comb))
