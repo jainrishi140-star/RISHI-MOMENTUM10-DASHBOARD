@@ -103,6 +103,32 @@ How to read this:
 - None of this covers the original's SL/TSL, target or option-leg (straddle/CE/PE) management.
   Those columns were empty in the exports.
 
+## Fast timeframe lock (replica-only setting)
+
+The original computes Fast on the chart's own timeframe. The same settings therefore give
+different Fast and Combined signals on a 1m chart (104 Fast flips, 20 Jul → 6 Oct 2026) than on
+a 5m chart (16) or a 30m chart (3). Slow is fixed at 30m and is identical on every chart. The
+original's Fast and Combined logs come from a **1m chart**.
+
+The replica adds a **Fast timeframe** setting, default **1 minute**. On any chart from 1m to 30m,
+the Pine script reads every 1m Fast value inside each chart candle and applies the Combined rule
+minute by minute. Fast and Combined then follow the 1m signals in your logs whatever chart you
+open. Leave the setting empty to use the chart's timeframe, as the original does.
+
+Combined state at each chart candle's close, compared with the **original 1m chart**
+(23 Jul → 6 Oct 2026):
+
+| Chart | Fast on chart timeframe | Fast locked to 1m |
+|-------|-------------------------|-------------------|
+| 3m  | 96.0% | 99.8% |
+| 5m  | 93.9% | 99.8% |
+| 30m | 69.7% | 99.8% |
+
+On a higher chart a signal is shown on the candle that contains the 1m signal. A Combined flip
+that reverses within the same chart candle is therefore not drawn, but the state is still correct.
+
+In Python, pass `--fast-1m <1m export>` to `verify`, `backtest` or `checklog` to get the same lock.
+
 ## Files
 
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,

@@ -7,14 +7,15 @@ and from the original's trade logs (2009-2026).
     Slow     : 30-minute timeframe (chart independent)
                sign( LEAD(HLC3) - EMA(HLC3, 63) ), where LEAD is an EMA with
                smoothing factor 1.27 (> 1, so it leads price instead of lagging)
-    Fast     : chart timeframe, sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113)
+    Fast     : chart timeframe (or a locked lower timeframe, e.g. 1m, via --fast-1m),
+               sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113)
                (weights fitted on the 30m + 5m charts, validated on the 3m and 1m charts)
     Combined : changes only when Slow and Fast agree, otherwise holds the previous state
 
 Trades (as in the original's logs) are taken at the open of the bar after the signal bar.
 
 Usage:
-    python tk_algo.py verify    <tv_export.csv> [--htf <30m_export.csv>]
+    python tk_algo.py verify    <tv_export.csv> [--htf <30m_export.csv>] [--fast-1m <1m_export.csv>]
     python tk_algo.py backtest  <tv_export.csv> [--htf <30m_export.csv>] [--original]
     python tk_algo.py checklog  <tv_export.csv> <trade_log.csv> --signal Slow|Fast|Combined [--htf ...]
 """
@@ -116,7 +117,17 @@ def bar_minutes_of(df):
     return int(pd.Series(df.index).diff().dt.total_seconds().div(60).mode()[0])
 
 
-def compute(df, htf=None):
+def compute(df, htf=None, fast_df=None):
+    """Slow/Fast/Combined on the chart bars of df. With fast_df (e.g. 1m bars), Fast and
+    Combined are computed on fast_df's bars and each chart bar takes the value at its last
+    fast_df bar, i.e. what the locked-timeframe chart shows at that moment."""
+    if fast_df is not None and bar_minutes_of(fast_df) < bar_minutes_of(df):
+        low = compute(fast_df, htf if htf is not None else to_30m(df))
+        last_low_bar = df.index + pd.Timedelta(minutes=bar_minutes_of(df) - bar_minutes_of(fast_df))
+        out = pd.DataFrame(low[["Fast", "Combined"]].reindex(last_low_bar, method="ffill").values,
+                           index=df.index, columns=["Fast", "Combined"])
+        out.insert(0, "Slow", compute(df, htf)["Slow"].values)
+        return out
     bar_minutes = bar_minutes_of(df)
     htf = to_30m(df) if htf is None else htf[["open", "high", "low", "close"]]
     htf = htf[htf.index.time < pd.Timestamp("15:30").time()]  # drop special-session bars
@@ -181,12 +192,13 @@ if __name__ == "__main__":
     ap.add_argument("csv")
     ap.add_argument("log", nargs="?", help="original trade log (checklog mode)")
     ap.add_argument("--htf", help="30m TradingView export (longer Slow EMA history)")
+    ap.add_argument("--fast-1m", help="1m export: lock Fast (and Combined) to the 1m timeframe")
     ap.add_argument("--signal", default="Combined", choices=["Slow", "Fast", "Combined"])
     ap.add_argument("--original", action="store_true",
                     help="backtest the original indicator's exported columns instead of the replica")
     a = ap.parse_args()
     df = load(a.csv)
-    sig = compute(df, load(a.htf) if a.htf else None)
+    sig = compute(df, load(a.htf) if a.htf else None, load(a.fast_1m) if a.fast_1m else None)
     if a.mode == "verify":
         verify(df, sig)
     elif a.mode == "checklog":

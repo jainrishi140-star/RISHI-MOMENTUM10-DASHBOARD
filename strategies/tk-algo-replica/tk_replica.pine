@@ -5,7 +5,8 @@
 //
 //   Slow     : 30m timeframe  -> sign( LEAD(HLC3) - EMA(HLC3, 63) )
 //              LEAD is an EMA with smoothing factor 1.27 (> 1), so it leads price instead of lagging
-//   Fast     : chart timeframe -> sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113)
+//   Fast     : sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113), on the "Fast timeframe"
+//              (default 1 minute, as in the original's logs; empty = chart timeframe, like the original)
 //   Combined : takes a new side only when Slow and Fast agree, otherwise keeps the previous side
 indicator("TK Replica (Slow / Fast / Combined)", shorttitle = "TK Replica", overlay = true)
 
@@ -18,6 +19,7 @@ slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
 slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
 slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
 noRepaint = input.bool(true, "Confirm Slow only on 30m close (no repaint)", group = grpP)
+fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the original's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the original does.")
 
 grpD = "Display"
 showSlow = input.bool(false, "Slow signals", group = grpD, inline = "sig")
@@ -51,11 +53,30 @@ bool  htfIsChart = timeframe.in_seconds(timeframe.period) >= timeframe.in_second
 float slow = htfIsChart or not noRepaint ? slowLive : slowConf
 float slowLine = request.security(sym, slowTf, slowEma())
 
-float fast = request.security(sym, timeframe.period, fastState())
+// Fast: when locked to a timeframe below the chart's, read every intrabar Fast value and replay
+// the Combined rule bar by bar, so Combined matches what the locked timeframe's chart would show.
+// Inside a chart bar, Slow keeps its previous value until the last intrabar, the one that closes
+// the 30m candle (exact for charts from 1m to 30m).
+string fastReqTf  = fastTf == "" or timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(fastTf) ? timeframe.period : fastTf
+bool   fastLocked = fastReqTf != timeframe.period
+float  fastChart  = request.security(sym, timeframe.period, fastState())
+array<float> fastIntra = request.security_lower_tf(sym, fastReqTf, fastState())
 
+var float fast = na
 var float comb = 0.0
-if slow == fast and slow != 0
-    comb := slow
+if fastLocked
+    int n = array.size(fastIntra)
+    if n > 0
+        for i = 0 to n - 1
+            float f = array.get(fastIntra, i)
+            float s = i == n - 1 ? slowLive : nz(slowLive[1])
+            if s == f and s != 0
+                comb := s
+        fast := array.get(fastIntra, n - 1)
+else
+    fast := fastChart
+    if slow == fast and slow != 0
+        comb := slow
 
 flipUp(float s) => s == 1 and nz(s[1]) == -1
 flipDn(float s) => s == -1 and nz(s[1]) == 1
@@ -96,7 +117,7 @@ if showTbl and barstate.islast
     table.cell(tbl, 1, 0, sym, text_color = color.white, bgcolor = color.purple)
     table.cell(tbl, 0, 1, "Slow (" + slowTf + ")")
     table.cell(tbl, 1, 1, stateText(slow), text_color = color.white, bgcolor = stateColor(slow))
-    table.cell(tbl, 0, 2, "Fast (chart)")
+    table.cell(tbl, 0, 2, "Fast (" + (fastLocked ? fastReqTf : "chart") + ")")
     table.cell(tbl, 1, 2, stateText(fast), text_color = color.white, bgcolor = stateColor(fast))
     table.cell(tbl, 0, 3, "Combined")
     table.cell(tbl, 1, 3, stateText(comb), text_color = color.white, bgcolor = stateColor(comb))
