@@ -6,13 +6,11 @@
 //   - always in the market: every Combined signal reverses the position
 //   - filled at the OPEN of the candle after the signal candle (TradingView's default fill)
 //   - ROI % per trade on spot NSE:NIFTY, not compounded
-// Each trade uses a fixed 1,00,00,000 (1 crore) of capital (large, so whole-unit rounding is
-// negligible), so in the Strategy Tester:
-//   Net profit / 1,00,000              = total ROI %          (original: 441.3% for 2009-2026)
-//   Max drawdown (currency) / 1,00,000 = max drawdown %       (original: 12.5%)
-//   Avg trade / 1,00,000               = avg ROI % per trade  (original: 0.189%)
-//   Profit factor                      = profit factor        (original: 1.65)
-// Run it on a 1m NSE:NIFTY chart with Deep Backtesting, from 2009-02-03.
+// The results table (bottom right) shows total ROI, average ROI per year and per trade, win rate,
+// profit factor and max drawdown, measured exactly like the original's logs, next to the
+// original's figures. It covers the chart's loaded history; for 2009-2026 use a 1m NSE:NIFTY
+// chart with Deep Backtesting. In the Strategy Tester each trade is 1 crore, so net profit /
+// 1,00,000 = total ROI %.
 strategy("TK Replica Strategy", shorttitle = "TK Replica Strat", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0)
 
 grpS = "Signal source"
@@ -119,9 +117,11 @@ if showTbl and barstate.islast
     table.cell(tbl, 1, 3, stateText(comb), text_color = color.white, bgcolor = stateColor(comb))
 
 grpB = "Backtest"
-tradeSig = input.string("Combined", "Trade signal", options = ["Combined", "Slow", "Fast"], group = grpB)
-fromTime = input.time(timestamp("03 Feb 2009 00:00 +0530"), "Backtest from", group = grpB)
-toTime   = input.time(timestamp("31 Dec 2099 00:00 +0530"), "Backtest to", group = grpB)
+tradeSig  = input.string("Combined", "Trade signal", options = ["Combined", "Slow", "Fast"], group = grpB)
+fromTime  = input.time(timestamp("03 Feb 2009 00:00 +0530"), "Backtest from", group = grpB)
+toTime    = input.time(timestamp("31 Dec 2099 00:00 +0530"), "Backtest to", group = grpB)
+costPct   = input.float(0.0, "Cost per side (%)", minval = 0.0, step = 0.01, group = grpB)
+showStats = input.bool(true, "Show results table", group = grpB)
 
 float sigState = tradeSig == "Combined" ? comb : tradeSig == "Slow" ? slow : fast
 bool inRange = time >= fromTime and time <= toTime
@@ -134,3 +134,74 @@ if inRange and goShort
     strategy.entry("Short", strategy.short)
 if not inRange and time > toTime
     strategy.close_all()
+
+// Results table: same statistics as the Python backtester and the original's logs.
+// Fill = open of the candle after the signal, ROI % per trade on price, not compounded,
+// max drawdown = largest fall of the cumulative ROI % from its peak.
+var float entryPx     = na
+var int   entrySide   = 0
+var int   pendingSide = 0
+var int   nTrades     = 0
+var int   nWins       = 0
+var float sumRoi      = 0.0
+var float grossWin    = 0.0
+var float grossLoss   = 0.0
+var float peakRoi     = 0.0
+var float maxDD       = 0.0
+var float firstT      = na
+var float lastT       = na
+
+if pendingSide != 0
+    if entrySide != 0
+        float roi = entrySide * (open / entryPx - 1) * 100 - 2 * costPct
+        nTrades += 1
+        sumRoi += roi
+        if roi > 0
+            nWins += 1
+            grossWin += roi
+        else
+            grossLoss -= roi
+        peakRoi := math.max(peakRoi, sumRoi)
+        maxDD := math.max(maxDD, peakRoi - sumRoi)
+        lastT := time
+    else
+        firstT := time
+    entryPx := open
+    entrySide := pendingSide
+    pendingSide := 0
+
+if inRange and goLong
+    pendingSide := 1
+if inRange and goShort
+    pendingSide := -1
+
+fmt(float v, string f) => na(v) ? "-" : str.tostring(v, f)
+
+var table res = table.new(position.bottom_right, 3, 8, border_width = 1)
+if showStats and barstate.islast
+    float years = na(firstT) or na(lastT) or lastT <= firstT ? na : (lastT - firstT) / (365.25 * 86400000.0)
+    float pf    = grossLoss > 0 ? grossWin / grossLoss : na
+    table.cell(res, 0, 0, tradeSig + " backtest", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 1, 0, "Replica", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 2, 0, "Original Combined 2009-26", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 0, 1, "Trades")
+    table.cell(res, 1, 1, str.tostring(nTrades))
+    table.cell(res, 2, 1, "2336")
+    table.cell(res, 0, 2, "Total ROI %")
+    table.cell(res, 1, 2, fmt(sumRoi, "#.##"))
+    table.cell(res, 2, 2, "441.3")
+    table.cell(res, 0, 3, "Avg ROI / year %")
+    table.cell(res, 1, 3, fmt(na(years) ? na : sumRoi / years, "#.##"))
+    table.cell(res, 2, 3, "25.0")
+    table.cell(res, 0, 4, "Avg ROI / trade %")
+    table.cell(res, 1, 4, fmt(nTrades > 0 ? sumRoi / nTrades : na, "#.###"))
+    table.cell(res, 2, 4, "0.189")
+    table.cell(res, 0, 5, "Win rate %")
+    table.cell(res, 1, 5, fmt(nTrades > 0 ? 100.0 * nWins / nTrades : na, "#.#"))
+    table.cell(res, 2, 5, "31.9")
+    table.cell(res, 0, 6, "Profit factor")
+    table.cell(res, 1, 6, fmt(pf, "#.##"))
+    table.cell(res, 2, 6, "1.65")
+    table.cell(res, 0, 7, "Max drawdown %")
+    table.cell(res, 1, 7, fmt(maxDD, "#.##"))
+    table.cell(res, 2, 7, "12.5")
