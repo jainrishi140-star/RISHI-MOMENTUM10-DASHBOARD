@@ -16,7 +16,8 @@ Trades (as in the original's logs) are taken at the open of the bar after the si
 
 Usage:
     python tk_algo.py verify    <tv_export.csv> [--htf <30m_export.csv>] [--fast-1m <1m_export.csv>]
-    python tk_algo.py backtest  <tv_export.csv> [--htf <30m_export.csv>] [--original]
+    python tk_algo.py backtest  <tv_export.csv> [--htf <30m_export.csv>] [--fast-1m <1m_export.csv>]
+                                [--original] [--cost 0.02] [--out trades.csv]
     python tk_algo.py checklog  <tv_export.csv> <trade_log.csv> --signal Slow|Fast|Combined [--htf ...]
 """
 import argparse
@@ -37,7 +38,10 @@ SESSION_START = pd.Timedelta(minutes=15)  # NSE 30m bars are anchored at 09:15
 
 def load(path):
     df = pd.read_csv(path)
-    df["time"] = pd.to_datetime(df["time"].str[:19])
+    if pd.api.types.is_numeric_dtype(df["time"]):  # TradingView "UNIX timestamp" export
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True).dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
+    else:  # ISO export, e.g. 2026-07-13T09:15:00+05:30 (exchange time)
+        df["time"] = pd.to_datetime(df["time"].str[:19])
     df = df.set_index("time")
     return df[~df.index.duplicated(keep="last")]
 
@@ -171,40 +175,59 @@ def check_log(df, sig, log, col, warmup_days=10):
           f"({len(hit) / max(len(lg), 1):.1%})")
 
 
-def backtest(df, sig, col="Combined"):
+def backtest(df, sig, col="Combined", cost=0.0):
     """Always-in-market reversal, filled at the open of the bar after the signal
-    (the original's convention). ROI % per trade, no costs."""
+    (the original's convention). ROI % per trade on spot; `cost` is % per side."""
     ev = flips(df, sig[col].values)
     px = df.open.reindex(ev.time).values
-    roi = ev.side.values[:-1] * (px[1:] / px[:-1] - 1) * 100
+    gross = ev.side.values[:-1] * (px[1:] / px[:-1] - 1) * 100
+    roi = gross - 2 * cost
     pts = ev.side.values[:-1] * (px[1:] - px[:-1])
+    trades = pd.DataFrame({"entry_time": ev.time.values[:-1], "exit_time": ev.time.values[1:],
+                           "side": np.where(ev.side.values[:-1] == 1, "LONG", "SHORT"),
+                           "entry": px[:-1], "exit": px[1:], "points": pts.round(2),
+                           "roi_pct": roi.round(4)})
+    if len(trades) == 0:
+        print(f"{col}: no completed trades")
+        return trades
     wins = roi > 0
-    print(f"{col}: {len(roi)} trades | net {pts.sum():.0f} pts | sum ROI {roi.sum():.1f}% | "
+    equity = np.cumsum(roi)
+    max_dd = (np.maximum.accumulate(equity) - equity).max()
+    loss_sum = -roi[~wins].sum()
+    print(f"{col:9s}: {len(roi)} trades | net {pts.sum():.0f} pts | sum ROI {roi.sum():.1f}% | "
           f"win rate {wins.mean():.1%} | avg win {roi[wins].mean():.2f}% | "
-          f"avg loss {roi[~wins].mean():.2f}% | profit factor {roi[wins].sum() / -roi[~wins].sum():.2f}")
-    return pd.DataFrame({"entry": ev.time.values[:-1], "exit": ev.time.values[1:],
-                         "side": ev.side.values[:-1], "roi": roi, "points": pts})
+          f"avg loss {roi[~wins].mean():.2f}% | profit factor "
+          f"{(roi[wins].sum() / loss_sum) if loss_sum else float('inf'):.2f} | max drawdown {max_dd:.1f}%")
+    return trades
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["verify", "backtest", "checklog"])
-    ap.add_argument("csv")
+    ap.add_argument("csv", help="TradingView export of NSE:NIFTY (time, open, high, low, close, ...)")
     ap.add_argument("log", nargs="?", help="original trade log (checklog mode)")
     ap.add_argument("--htf", help="30m TradingView export (longer Slow EMA history)")
     ap.add_argument("--fast-1m", help="1m export: lock Fast (and Combined) to the 1m timeframe")
     ap.add_argument("--signal", default="Combined", choices=["Slow", "Fast", "Combined"])
     ap.add_argument("--original", action="store_true",
                     help="backtest the original indicator's exported columns instead of the replica")
+    ap.add_argument("--cost", type=float, default=0.0, help="cost per side in %% (e.g. 0.02)")
+    ap.add_argument("--out", help="save the trade list of --signal to this CSV")
     a = ap.parse_args()
     df = load(a.csv)
-    sig = compute(df, load(a.htf) if a.htf else None, load(a.fast_1m) if a.fast_1m else None)
+    fast_df = load(a.fast_1m) if a.fast_1m else None
+    if fast_df is not None:  # Fast/Combined only exist where 1m data exists
+        df = df[(df.index >= fast_df.index[0]) & (df.index <= fast_df.index[-1])]
+    sig = compute(df, load(a.htf) if a.htf else None, fast_df)
     if a.mode == "verify":
         verify(df, sig)
     elif a.mode == "checklog":
         check_log(df, sig, load_log(a.log), a.signal)
     else:
-        df = df[df.index >= df.index[0] + pd.Timedelta(days=10)]
+        df = df[df.index >= df.index[0] + pd.Timedelta(days=10)]  # indicator warm-up
         sig = df[["Slow", "Fast", "Combined"]].fillna(0) if a.original else sig.loc[df.index]
-        for c in ["Slow", "Fast", "Combined"]:
-            backtest(df, sig, c)
+        print(f"Backtest {df.index[0]} -> {df.index[-1]} | cost {a.cost}% per side")
+        trades = {c: backtest(df, sig, c, a.cost) for c in ["Slow", "Fast", "Combined"]}
+        if a.out:
+            trades[a.signal].to_csv(a.out, index=False)
+            print(f"Saved {len(trades[a.signal])} {a.signal} trades to {a.out}")

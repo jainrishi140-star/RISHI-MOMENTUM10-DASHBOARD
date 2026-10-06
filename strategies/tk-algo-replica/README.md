@@ -140,7 +140,9 @@ In Python, pass `--fast-1m <1m export>` to `verify`, `backtest` or `checklog` to
 python3 tk_algo.py verify   NSE_NIFTY_1.csv --htf NSE_NIFTY_30.csv
 python3 tk_algo.py checklog NSE_NIFTY_30.csv TK_TF_slow.csv --signal Slow
 python3 tk_algo.py checklog NSE_NIFTY_1.csv  TK_TF_Combined.csv --signal Combined --htf NSE_NIFTY_30.csv
-python3 tk_algo.py backtest NSE_NIFTY_5.csv --htf NSE_NIFTY_30.csv [--original]
+python3 tk_algo.py backtest NSE_NIFTY_1.csv --htf NSE_NIFTY_30.csv --cost 0.02 --out combined_trades.csv
+python3 tk_algo.py backtest NSE_NIFTY_5.csv --htf NSE_NIFTY_30.csv --fast-1m NSE_NIFTY_1.csv  # Fast locked to 1m
+python3 tk_algo.py backtest NSE_NIFTY_1.csv --htf NSE_NIFTY_30.csv --original                # original's own columns
 ```
 
 Pass `--htf` with a 30m export whenever the chart export is short. It gives the Slow 63-period
