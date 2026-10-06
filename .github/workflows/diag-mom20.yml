@@ -1,0 +1,14 @@
+name: diag-mom20
+on:
+  push:
+    branches: [claude/diag-mom20]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          ID=1yU6YSzZcyAHlhH-4aFlrVNaiDOcT5afdvar1yuAaQCY
+          for t in Holdings Realised NAV; do
+            echo "=== $t"
+            curl -sSL "https://docs.google.com/spreadsheets/d/$ID/gviz/tq?tqx=out:csv&sheet=$t" | head -60
+          done
