@@ -121,8 +121,8 @@ if showTbl and barstate.islast
 
 grpB = "Backtest"
 tradeSig = input.string("Combined", "Trade signal", options = ["Combined", "Slow", "Fast"], group = grpB)
-fromTime = input.time(timestamp("Asia/Kolkata", 2009, 2, 3, 0, 0), "Backtest from", group = grpB)
-toTime   = input.time(timestamp("Asia/Kolkata", 2099, 12, 31, 0, 0), "Backtest to", group = grpB)
+fromTime = input.time(timestamp("03 Feb 2009 00:00 +0530"), "Backtest from", group = grpB)
+toTime   = input.time(timestamp("31 Dec 2099 00:00 +0530"), "Backtest to", group = grpB)
 
 float sigState = tradeSig == "Combined" ? comb : tradeSig == "Slow" ? slow : fast
 bool inRange = time >= fromTime and time <= toTime
