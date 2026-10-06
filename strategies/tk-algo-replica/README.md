@@ -245,7 +245,7 @@ The full table is in `is_oos_50_results.csv`.
 Replica vs original across all 50 OOS periods: ROI per year gap median 0.24, max 1.12 points;
 profit factor gap median 0.009, max 0.038; same-minute trade match median 89.2% (min 87.1%).
 The 7 variations with WFE < 50% all have the out-of-sample part in 2021-2026, the weaker
-recent period. Their OOS is still profitable (PF 1.21-1.43).
+recent period. Their OOS is still profitable (PF 1.21-1.49).
 
 ## Files
 
