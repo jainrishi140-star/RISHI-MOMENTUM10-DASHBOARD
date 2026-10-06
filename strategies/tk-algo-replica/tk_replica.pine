@@ -1,22 +1,22 @@
 //@version=6
 // In-house replica of the TK ALGO V1.1 Slow / Fast / Combined signals.
-// Reverse-engineered from TradingView exports of the original indicator's plots
-// (see README.md in this folder for the match statistics).
+// Reverse-engineered from TradingView exports of the original indicator's plots and its
+// 2009-2026 trade logs (see README.md in this folder for the match statistics).
 //
-//   Slow     : 30m timeframe  -> sign( (H+L+2C)/4  -  EMA(HL2, 62) )
-//   Fast     : chart timeframe -> sign( EMA(HL2, 102) - EMA(HL2, 113) )
+//   Slow     : 30m timeframe  -> sign( LEAD(HLC3) - EMA(HLC3, 63) )
+//              LEAD is an EMA with smoothing factor 1.27 (> 1), so it leads price instead of lagging
+//   Fast     : chart timeframe -> sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113)
 //   Combined : takes a new side only when Slow and Fast agree, otherwise keeps the previous side
 indicator("TK Replica (Slow / Fast / Combined)", shorttitle = "TK Replica", overlay = true)
 
 grpS = "Signal source"
-useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Turn on to test the signals on futures, e.g. NSE:NIFTY1!. The original appears to read a futures-like feed.")
+useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the original's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
 altSym = input.symbol("NSE:NIFTY1!", "Signal symbol", group = grpS)
 
 grpP = "Parameters"
 slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
-slowLen   = input.int(62, "Slow EMA length (HL2)", minval = 1, group = grpP)
-fastLenA  = input.int(102, "Fast EMA A length (HL2)", minval = 1, group = grpP)
-fastLenB  = input.int(113, "Fast EMA B length (HL2)", minval = 1, group = grpP)
+slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
+slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
 noRepaint = input.bool(true, "Confirm Slow only on 30m close (no repaint)", group = grpP)
 
 grpD = "Display"
@@ -29,9 +29,19 @@ showTbl  = input.bool(true, "Status table", group = grpD)
 
 sym = useAlt ? altSym : syminfo.tickerid
 
-slowState() => math.sign((high + low + 2 * close) / 4 - ta.ema(hl2, slowLen))
-slowEma()   => ta.ema(hl2, slowLen)
-fastState() => math.sign(ta.ema(hl2, fastLenA) - ta.ema(hl2, fastLenB))
+leadEma(float src, float a) =>
+    var float v = na
+    v := na(v) ? src : a * src + (1 - a) * v
+    v
+
+slowState() => math.sign(leadEma(hlc3, slowLead) - ta.ema(hlc3, slowLen))
+slowEma()   => ta.ema(hlc3, slowLen)
+
+// Weights fitted on the 30m + 5m charts and validated on the 3m and 1m charts
+fastState() =>
+    float b = ta.ema(hlc3, 113)
+    float score = 0.0128 * (hlc3 - b) - 0.0381 * (ta.ema(hlc3, 5) - b) + 0.0198 * (ta.ema(hlc3, 10) - b) + 0.1147 * (ta.ema(hlc3, 20) - b) - 0.6092 * (ta.ema(hlc3, 40) - b) + 0.5811 * (ta.ema(hlc3, 60) - b) + 1.0 * (ta.ema(hlc3, 80) - b) + 0.4886 * (ta.ema(hlc3, 100) - b) - 0.2437 * (ta.ema(hlc3, 120) - b) - 0.7241 * (ta.ema(hlc3, 140) - b) - 0.8173 * (ta.ema(hlc3, 160) - b) - 0.1915 * (ta.ema(hlc3, 200) - b) + 0.5852 * (ta.ema(hlc3, 250) - b) - 0.1643 * (ta.ema(hlc3, 300) - b)
+    math.sign(score)
 
 // Slow: on charts at or above the slow timeframe compute in place; below it, read the 30m series.
 // The non-repainting form shows a 30m bar's value from the first chart bar after that 30m bar closes.
@@ -57,7 +67,7 @@ slowSell = flipDn(slow)
 fastBuy  = flipUp(fast)
 fastSell = flipDn(fast)
 
-plot(showEma ? slowLine : na, "Slow EMA (30m HL2)", color = color.new(color.orange, 0), linewidth = 2)
+plot(showEma ? slowLine : na, "Slow EMA (30m HLC3)", color = color.new(color.orange, 0), linewidth = 2)
 bgcolor(showBg and comb == 1 ? color.new(color.teal, 90) : showBg and comb == -1 ? color.new(color.red, 90) : na)
 
 plotshape(showComb and combBuy,  "Combined BUY",  shape.labelup,   location.belowbar, color.new(color.teal, 0), text = "BUY",  textcolor = color.white, size = size.small)

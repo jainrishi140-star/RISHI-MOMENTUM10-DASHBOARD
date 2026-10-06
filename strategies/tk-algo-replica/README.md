@@ -1,87 +1,131 @@
 # TK ALGO V1.1: in-house replica
 
-The original TK ALGO V1.1 TradingView indicator has locked source code. These signals were
-reverse-engineered from TradingView CSV exports of NSE:NIFTY on the 1m, 3m, 5m and 30m charts.
-Those exports include the original indicator's own `Slow`, `Fast` and `Combined` plot columns
-(+1 bullish, -1 bearish, 0 warm-up), so every candidate formula could be scored bar by bar
-against the real output.
+The original TK ALGO V1.1 TradingView indicator has locked source code. Its signals were
+reverse-engineered from two sources:
 
-## Decoded rules
+1. **TradingView exports** of NSE:NIFTY on the 1m, 3m, 5m and 30m charts. These include the
+   original indicator's own `Slow` / `Fast` / `Combined` plot columns (+1 bullish, -1 bearish).
+2. **The original's trade logs, 2009 → 2026:**
 
-| Signal   | Timeframe | Rule | Bars matched |
-|----------|-----------|------|--------------|
-| Slow     | 30m, fixed (the same on every chart) | `sign((H+L+2C)/4 − EMA(HL2, 62))` | 99.1% (30m, 6.7 yrs) · 99.3% (5m) · 99.7% (1m) |
-| Fast     | chart timeframe | `sign(EMA(HL2, 102) − EMA(HL2, 113))` | 98.7% (30m) · 98.1% (5m) · 98.4% (3m) · 98.7% (1m) |
-| Combined | n/a | takes a new side only when Slow and Fast agree; otherwise keeps its previous side | 100% when fed the original Slow and Fast columns |
+   | Log | Trades | Chart |
+   |-----|--------|-------|
+   | `TK_TF_slow.csv` | 3,056 | 30m signal |
+   | `TK_TF_Fast.csv` | 8,179 | 1m chart |
+   | `TK_TF_Combined.csv` | 2,336 | 1m chart |
 
-End to end (replica Slow and Fast fed into the Combined rule), the replica's Combined matches the
-original on 97.4–98.7% of bars.
+   `TK_TF_Combined.csv` also includes the entry prices of the last 1,168 trades.
 
-How each rule was found:
+## What the trade logs confirmed
 
-- **Slow is a 30m signal.** On the 1m, 3m and 5m charts, Slow only ever changes on the last chart
-  bar of a 30m candle (09:44 on 1m, 09:42 on 3m, 09:40 on 5m). That is exactly
-  `request.security("30")` behaviour, and it is why signals arrive at 09:45, 10:15, 10:45 and so on.
-  The values agree with the 30m chart's Slow 99% of the time on every chart.
-- **Slow formula.** A grid search over EMA, SMA, WMA, HMA, DEMA, TEMA, RSI, CCI, MACD, Supertrend
-  and Donchian rules landed on "price vs EMA(~62) on 30m". Price measured as (H+L+2C)/4 rather
-  than the close gave the last +0.6% of matches.
-- **Fast formula.** Fast uses chart bars. It flips about 110 times per ~21k bars on every
-  timeframe, and the same EMA pair (≈102/113 on HL2) is the best fit on all four charts.
-- **Combined** reproduces the original exactly from the original Slow and Fast columns, on all four charts.
+- **Log time = the open of the bar after the signal bar.** A Slow signal on the 09:15–09:45
+  candle is logged at 09:45. A signal on the last candle of the day is logged at the next day's 09:15.
+- **ROI % = return from that bar's open to the next signal's open.** This reproduces all
+  1,167 Slow trades from 2020 onward to within 0.01%. The prices listed in the Combined log are
+  exactly spot NIFTY's open on those bars, so the original trades on **spot** prices.
+- **The Slow log is the 30m Slow series** (1,163 of 1,167 identical to the 30m export).
+- **The Fast and Combined logs come from a 1m chart** (103 of 104 Fast flips identical to the 1m export).
+- **The Combined rule holds across all 17 years.** Replaying the Slow and Fast logs through
+  "switch only when both agree" reproduces **all 2,336** logged Combined trades exactly.
 
-## Known gap: signal timing
+## Decoded rules (v2)
 
-Bar-level agreement is high, but replica flips do not always land on the original's exact bar:
+| Signal   | Timeframe | Rule |
+|----------|-----------|------|
+| Slow     | 30m, fixed (the same on every chart) | `sign( LEAD(HLC3) − EMA(HLC3, 63) )`, where `LEAD = 1.27·HLC3 + (1−1.27)·LEAD[1]` |
+| Fast     | chart timeframe | `sign( Σ wₙ · (EMA(HLC3, n) − EMA(HLC3, 113)) )`, using the 14 fitted weights in `tk_algo.py` |
+| Combined | n/a | takes a new side only when Slow and Fast agree; otherwise keeps its previous side |
 
-| Chart | Original Combined signals | Same bar | Within 30 min |
-|-------|---------------------------|----------|---------------|
-| 1m    | 18  | 67% | 78% |
-| 3m    | 69  | 51% | 84% |
-| 5m    | 87  | 37% | 90% |
-| 30m   | 109 | 12% | 55% (within 1h) |
+**Slow.** The v1 formula ((H+L+2C)/4 vs EMA(HL2, 62)) missed mostly at the opening bars of the
+session. Price momentum explained the misses, which led to the fix: Slow compares a *lead* EMA of
+HLC3 against EMA(HLC3, 63). The lead EMA has a smoothing factor of 1.27, above 1, so it
+overshoots price instead of lagging it.
 
-Most of the remaining Slow misses are tiny (median 4–5 points from the EMA). They also cluster
-heavily on the 09:15 opening bar: 23% of misses, against 7.7% of all bars. That pattern points to
-the original computing on a different price feed than spot, most likely **NIFTY futures
-(`NSE:NIFTY1!`) or the synthetic future** (the original has a "Syn Fut" option). Price/EMA and
-EMA/EMA crossovers are very sensitive to small differences in basis.
+**Fast.** No standard indicator reproduces Fast's exact flip timing. That includes EMA, SMA and
+WMA pairs, DEMA, TEMA, ZLEMA, HMA, MACD, TRIX, RSI, Donchian and Supertrend. Fast is therefore
+modelled as a fixed weighted mix of 14 EMAs (lengths 1–300) of HLC3. The weights were fitted
+on the 30m and 5m charts only. They were then checked on the 3m and 1m charts, which the fit
+never saw, and still match 99.7% of bars. That holds on every timeframe, so the weights are a
+real property of the indicator rather than an overfit.
 
-**Next step to close the gap:** export the same charts on `NSE:NIFTY1!` with the original
-indicator attached, then rerun `verify`. The Pine script already has a
-"Compute signals on another symbol" switch for this.
+## Accuracy (v2)
 
-## Backtest (spot points, always in the market, reverse on each flip, no costs/slippage)
+Original vs replica, after 10 days of warm-up. "Exact" = the replica's signal is on the same bar
+and in the same direction as the original's.
 
-| Chart / period | Signal | Trades | Net pts | Win % | Profit factor |
-|----------------|--------|--------|---------|-------|---------------|
-| 30m, 2020-01 → 2026-10 | Original Combined | 107 | 4,062 | 33.6% | 1.18 |
-| 30m, 2020-01 → 2026-10 | Replica Combined  | 115 | 1,782 | 29.6% | 1.07 |
-| 30m, 2020-01 → 2026-10 | Original Slow     | 1,167 | 27,298 | 27.9% | 1.60 |
-| 30m, 2020-01 → 2026-10 | Replica Slow      | 995 | 25,016 | 26.7% | 1.55 |
-| 5m, 2025-09 → 2026-10  | Original Combined | 85 | 734 | 36.5% | 1.07 |
-| 5m, 2025-09 → 2026-10  | Replica Combined  | 89 | 1,062 | 36.0% | 1.11 |
+| Chart | Slow bars | Slow exact | Fast bars | Fast exact | Combined bars | Combined exact |
+|-------|-----------|------------|-----------|------------|---------------|----------------|
+| 30m (2020 → 2026) | 99.94% | 98.8% | 99.76% | 63.0% | 99.77% | 63.0% |
+| 5m  | 99.85% | 97.0% | 99.66% | 50.9% | 99.66% | 70.9% |
+| 3m  | 99.16% | 96.0% | 99.67% | 55.7% | 99.12% | 72.1% |
+| 1m  | 99.84% | 96.3% | 99.63% | 54.6% | 99.83% | 88.2% |
 
-How to read this: the strategy wins on fewer than 40% of trades. Its edge comes from winners
-being 2–4× the size of losers. Slow trades far more often, so costs matter a lot there. At about
-2–3 points per round trip on futures, the 6.7-year Slow figure falls by roughly 2,500–3,500 points.
-The exports had no data for the original's SL/TSL, TGT, strike or straddle columns, so the
-original's option-leg trade management is **not** reproduced here. These results only measure
-the direction signals on spot.
+Against the trade logs:
+
+| Log | Overlap with price data | Exact matches |
+|-----|-------------------------|---------------|
+| Slow | 2020 → 2026 | 1,150 of 1,167 (98.5%) |
+| Fast (1m) | Jul → Oct 2026 | 54 of 98 (55%); nearly all the rest are 1–2 bars off |
+| Combined (1m) | Jul → Sep 2026 | 15 of 16 (94%) |
+
+v1 for comparison: Slow 78% exact, Fast ~18% exact (about 60% within 2 bars).
+
+## Backtest
+
+Settings match the original's logs: always in the market, reverse on every signal, fill at the
+open of the next bar, ROI % on spot, no costs.
+
+| Chart / period | Signal | Trades | Sum ROI | Win % | Avg win / loss | Profit factor |
+|----------------|--------|--------|---------|-------|----------------|---------------|
+| 30m, 2020-01 → 2026-10 | **Original** Slow | 1,167 | 162.7% | 29.0% | 1.23% / −0.31% | 1.64 |
+| 30m, 2020-01 → 2026-10 | **Replica** Slow  | 1,163 | 162.1% | 29.1% | 1.24% / −0.31% | 1.63 |
+| 30m, 2020-01 → 2026-10 | Original Combined | 107 | 35.5% | 33.6% | 4.46% / −1.76% | 1.28 |
+| 30m, 2020-01 → 2026-10 | Replica Combined  | 109 | 41.5% | 33.9% | 4.47% / −1.72% | 1.34 |
+| 5m, 2025-09 → 2026-10  | Original Combined | 85 | 2.9% | 37.6% | 1.37% / −0.77% | 1.07 |
+| 5m, 2025-09 → 2026-10  | Replica Combined  | 85 | 2.3% | 37.6% | 1.36% / −0.78% | 1.05 |
+| 1m, 2026-07 → 2026-10  | Original Combined | 16 | 6.2% | 43.8% | 1.28% / −0.31% | 3.21 |
+| 1m, 2026-07 → 2026-10  | Replica Combined  | 16 | 6.2% | 43.8% | 1.28% / −0.31% | 3.22 |
+
+The original's own logs, for reference:
+
+| Log | Trades | Sum ROI | Win % | Avg win / loss | Profit factor |
+|-----|--------|---------|-------|----------------|---------------|
+| Slow 2009 → 2026          | 3,056 | 443.6% | 28.5% | 1.32% / −0.32% | 1.63 |
+| Fast (1m) 2009 → 2026     | 8,179 | 463.2% | 31.6% | 0.82% / −0.30% | 1.28 |
+| Combined (1m) 2009 → 2026 | 2,336 | 441.3% | 31.9% | 1.50% / −0.42% | 1.65 |
+| Combined (1m) 2020 → 2026 |   905 | 156.6% | 31.5% | 1.42% / −0.40% | 1.63 |
+
+How to read this:
+
+- The strategy loses on about 70% of trades. Its edge comes from winners being about 4× the
+  size of losers.
+- Costs are not included. Combined on 1m makes about 135 trades a year. At 0.02–0.03% per side
+  that costs roughly 5–8% ROI a year, against the ~25% a year shown in the log.
+- None of this covers the original's SL/TSL, target or option-leg (straddle/CE/PE) management.
+  Those columns were empty in the exports.
 
 ## Files
 
-- `tk_algo.py`: replica, accuracy check against an export, and flip-to-flip backtest.
-- `tk_replica.pine`: TradingView Pine v6 indicator (Slow/Fast/Combined, labels, alerts, status table).
-  The default *Confirm Slow only on 30m close* setting avoids repainting: Slow updates on the first
-  chart bar after the 30m candle closes.
+- `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
+  and `backtest` (replica or `--original` columns), all using the original's fill convention.
+- `tk_replica.pine`: TradingView Pine v6 indicator with Slow/Fast/Combined, labels, alerts and a
+  status table. The default *Confirm Slow only on 30m close* setting avoids repainting.
 
 ```bash
-# accuracy against an export that includes the original indicator's columns
-python3 tk_algo.py verify   NSE_NIFTY_5.csv --htf NSE_NIFTY_30.csv
-# backtest the replica, or the original's exported columns
+python3 tk_algo.py verify   NSE_NIFTY_1.csv --htf NSE_NIFTY_30.csv
+python3 tk_algo.py checklog NSE_NIFTY_30.csv TK_TF_slow.csv --signal Slow
+python3 tk_algo.py checklog NSE_NIFTY_1.csv  TK_TF_Combined.csv --signal Combined --htf NSE_NIFTY_30.csv
 python3 tk_algo.py backtest NSE_NIFTY_5.csv --htf NSE_NIFTY_30.csv [--original]
 ```
 
-Pass `--htf` with a 30m export whenever the chart export is short. It gives the Slow 62-period
-EMA enough history to warm up; without it the 30m bars are rebuilt from the chart data.
+Pass `--htf` with a 30m export whenever the chart export is short. It gives the Slow 63-period
+EMA enough history to warm up.
+
+## Remaining gap and how to close it
+
+Fast is the only part not reproduced exactly. About 55–63% of its flips land on the same bar
+and almost all the rest are 1–2 bars off. Combined inherits only part of that error, because a
+Fast flip only matters while Slow already agrees.
+
+More 1m price history would let the Fast fit be tightened. One option is a 1m NIFTY export
+going back further, ideally with the original indicator attached. Since the Fast log runs
+from 2009, any extra 1m OHLC could also be scored with `checklog`.
