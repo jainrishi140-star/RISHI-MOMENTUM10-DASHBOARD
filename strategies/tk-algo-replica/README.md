@@ -247,12 +247,39 @@ profit factor gap median 0.009, max 0.038; same-minute trade match median 89.2% 
 The 7 variations with WFE < 50% all have the out-of-sample part in 2021-2026, the weaker
 recent period. Their OOS is still profitable (PF 1.21-1.49).
 
+## Monte Carlo simulation
+
+`python3 monte_carlo.py <original> <replica> --out monte_carlo_results.csv` runs 10,000 runs per
+test on the Deep Backtesting trade lists (ROI % per trade, not compounded, seed 7). Values are the
+median, with the 5th-95th percentile range in brackets. The full table is in
+`monte_carlo_results.csv`.
+
+| Test | Original | Replica |
+|---|---|---|
+| Reshuffled order: max drawdown | 17.9% (13.2 - 26.7) | 18.0% (13.2 - 26.7) |
+| Reshuffled order: P(max DD > 15%) / > 20% | 81% / 30% | 82% / 32% |
+| Reshuffled order: longest losing streak | 18 trades (14 - 24) | 18 trades (14 - 24) |
+| Bootstrap 17.6 yrs: ROI per year | 24.9% (18.5 - 31.9) | 24.8% (18.2 - 31.6) |
+| Bootstrap 17.6 yrs: profit factor | 1.65 (1.47 - 1.86) | 1.65 (1.47 - 1.85) |
+| Bootstrap 17.6 yrs: max drawdown | 18.0% (12.7 - 27.9) | 18.1% (12.8 - 27.7) |
+| One year, all history: ROI | 23.9% (−0.8 - 55.0) | 23.5% (−1.3 - 54.9) |
+| One year, all history: P(loss) / P(< 10%) | 5.7% / 19.2% | 6.1% / 20.1% |
+| One year, 2021+ trades only: ROI | 13.5% (−6.1 - 36.3) | 13.5% (−6.3 - 36.1) |
+| One year, 2021+ trades only: P(loss) / P(< 10%) | 13.5% / 39.5% | 13.5% / 39.5% |
+| Stress (skip 10% of trades, 0.02%/side cost): ROI per year | 17.8% (15.6 - 19.7) | 17.6% (15.4 - 19.5) |
+| Stress: profit factor / max drawdown | 1.47 / 21.8% | 1.47 / 22.1% |
+
+The historical max drawdown (12.5%) is at the lucky end of the simulated range. The same trades in
+a random order give a median drawdown of about 18%, and 26-28% at the 95th percentile. Size
+positions for a drawdown of 20-28%, not 12.5%.
+
 ## Files
 
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
   and `backtest` (replica or `--original` columns), all using the original's fill convention.
 - `tk_replica_strategy.pine`: the same signals as a TradingView strategy (always in the market,
   fills at the next candle's open) for Deep Backtesting against the original's statistics.
+- `monte_carlo.py`: Monte Carlo simulation (reshuffle, bootstrap, one-year, stress) on two trade lists.
 - `is_oos.py`: 10-variation in-sample / out-of-sample test on two TradingView trade-list exports.
 - `tk_replica.pine`: TradingView Pine v6 indicator with Slow/Fast/Combined, labels, alerts and a
   status table. Signals are final at candle close; set alerts to "Once Per Bar Close".
