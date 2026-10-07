@@ -124,6 +124,7 @@ Size positions for a 20-28% drawdown, not the 12.5% seen in the backtest.
 | File | What it is |
 |------|------------|
 | `rishi_tk_tf.pine` | Rishi TK TF indicator for TradingView: BUY/SELL labels, alerts, status table |
+| `rishi_tk_tf_fixed_strategy.pine` | Simplest Rishi TK TF backtester for TradingView: fixed 09:45-15:15 checks built in, 1m chart only, for Deep Backtesting and trade-log export |
 | `rishi_tk_tf_strategy.pine` | Rishi TK TF backtester for TradingView (Deep Backtesting), with a results table next to the TK TF Original System's figures |
 | `rishi_tk_tf.py` | Rishi TK TF in Python: `backtest`, `verify` / `checklog` against the TK TF Original System, `logstats` of a TK TF Original log |
 | `is_oos.py`, `monte_carlo.py` | In-sample / out-of-sample and Monte Carlo tests on two TradingView trade-list exports |

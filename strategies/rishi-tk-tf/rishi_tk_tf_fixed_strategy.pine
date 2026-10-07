@@ -1,0 +1,133 @@
+//@version=6
+// Rishi TK TF - Fixed 30-minute checks (TradingView strategy / backtester)
+//
+// Use on a 1-MINUTE NSE:NIFTY chart, with Deep Backtesting from 03 Feb 2009.
+//   Slow     : 30m candles, LeadEMA(HLC3, 1.27) vs EMA(HLC3, 63)
+//   Fast     : 1m candles, fixed blend of 14 EMAs of HLC3
+//   Combined : checked ONLY at 09:45, 10:15, 10:45 ... 15:15. If Slow and Fast agree at a check,
+//              Combined takes that side; otherwise it keeps its side. After 15:15 the next check
+//              is 09:45 the next day.
+//   Trades   : always in the market, each Combined signal reverses the position, filled at the
+//              open of the next candle (09:45, 10:15 ... 15:15). 1 crore per trade, no costs by
+//              default, so Strategy Tester net profit / 1,00,000 = total ROI %.
+strategy("Rishi TK TF - Fixed 30m Checks", shorttitle = "Rishi TK TF Fixed", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0)
+
+// ---------- Inputs ----------
+slowLen   = input.int(63, "Slow EMA length (HLC3, 30m)", minval = 1)
+slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01)
+fromTime  = input.time(timestamp("03 Feb 2009 00:00 +0530"), "Backtest from")
+costPct   = input.float(0.0, "Cost per side (%)", minval = 0.0, step = 0.01)
+showStats = input.bool(true, "Show results table")
+
+// ---------- Chart check ----------
+if not (timeframe.isminutes and timeframe.multiplier == 1)
+    runtime.error("Rishi TK TF Fixed: please open a 1-minute NSE:NIFTY chart")
+
+// ---------- Slow (30m) ----------
+leadEma(float src, float a) =>
+    var float v = na
+    v := na(v) ? src : a * src + (1 - a) * v
+    v
+
+slowState() => math.sign(leadEma(hlc3, slowLead) - ta.ema(hlc3, slowLen))
+float slow = request.security(syminfo.tickerid, "30", slowState())
+
+// ---------- Fast (1m, this chart) ----------
+float fb = ta.ema(hlc3, 113)
+float fastScore = 0.0128 * (hlc3 - fb) - 0.0381 * (ta.ema(hlc3, 5) - fb) + 0.0198 * (ta.ema(hlc3, 10) - fb) + 0.1147 * (ta.ema(hlc3, 20) - fb) - 0.6092 * (ta.ema(hlc3, 40) - fb) + 0.5811 * (ta.ema(hlc3, 60) - fb) + 1.0 * (ta.ema(hlc3, 80) - fb) + 0.4886 * (ta.ema(hlc3, 100) - fb) - 0.2437 * (ta.ema(hlc3, 120) - fb) - 0.7241 * (ta.ema(hlc3, 140) - fb) - 0.8173 * (ta.ema(hlc3, 160) - fb) - 0.1915 * (ta.ema(hlc3, 200) - fb) + 0.5852 * (ta.ema(hlc3, 250) - fb) - 0.1643 * (ta.ema(hlc3, 300) - fb)
+float fast = math.sign(fastScore)
+
+// ---------- Combined, checked only at 09:45 ... 15:15 ----------
+int  closeMin = hour(time_close, "Asia/Kolkata") * 60 + minute(time_close, "Asia/Kolkata")
+bool isCheck  = closeMin >= 585 and closeMin <= 915 and (closeMin - 585) % 30 == 0
+
+var float comb = 0.0
+if isCheck and slow == fast and slow != 0
+    comb := slow
+
+bool buySig  = comb == 1 and nz(comb[1]) == -1
+bool sellSig = comb == -1 and nz(comb[1]) == 1
+
+// ---------- Orders ----------
+bool inRange = time >= fromTime
+if inRange and buySig
+    strategy.entry("Long", strategy.long)
+if inRange and sellSig
+    strategy.entry("Short", strategy.short)
+
+// ---------- Chart display ----------
+bgcolor(comb == 1 ? color.new(color.teal, 90) : comb == -1 ? color.new(color.red, 90) : na)
+plotshape(buySig,  "BUY",  shape.labelup,   location.belowbar, color.new(color.teal, 0), text = "BUY",  textcolor = color.white, size = size.small)
+plotshape(sellSig, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),  text = "SELL", textcolor = color.white, size = size.small)
+plot(slow, "Slow", display = display.data_window)
+plot(fast, "Fast", display = display.data_window)
+plot(comb, "Combined", display = display.data_window)
+
+// ---------- Results table (same measures as the TK TF Original System's logs) ----------
+var float entryPx     = na
+var int   entrySide   = 0
+var int   pendingSide = 0
+var int   nTrades     = 0
+var int   nWins       = 0
+var float sumRoi      = 0.0
+var float grossWin    = 0.0
+var float grossLoss   = 0.0
+var float peakRoi     = 0.0
+var float maxDD       = 0.0
+var float firstT      = na
+var float lastT       = na
+
+if pendingSide != 0
+    if entrySide != 0
+        float roi = entrySide * (open / entryPx - 1) * 100 - 2 * costPct
+        nTrades += 1
+        sumRoi += roi
+        if roi > 0
+            nWins += 1
+            grossWin += roi
+        else
+            grossLoss -= roi
+        peakRoi := math.max(peakRoi, sumRoi)
+        maxDD := math.max(maxDD, peakRoi - sumRoi)
+        lastT := time
+    else
+        firstT := time
+    entryPx := open
+    entrySide := pendingSide
+    pendingSide := 0
+
+if inRange and buySig
+    pendingSide := 1
+if inRange and sellSig
+    pendingSide := -1
+
+fmt(float v, string f) => na(v) ? "-" : str.tostring(v, f)
+
+var table res = table.new(position.bottom_right, 3, 8, border_width = 1)
+if showStats and barstate.islast
+    float years = na(firstT) or na(lastT) or lastT <= firstT ? na : (lastT - firstT) / (365.25 * 86400000.0)
+    float pf    = grossLoss > 0 ? grossWin / grossLoss : na
+    table.cell(res, 0, 0, "Combined backtest", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 1, 0, "Rishi TK TF Fixed", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 2, 0, "TK TF Original 2009-26", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 0, 1, "Trades")
+    table.cell(res, 1, 1, str.tostring(nTrades))
+    table.cell(res, 2, 1, "2336")
+    table.cell(res, 0, 2, "Total ROI %")
+    table.cell(res, 1, 2, fmt(sumRoi, "#.##"))
+    table.cell(res, 2, 2, "441.3")
+    table.cell(res, 0, 3, "Avg ROI / year %")
+    table.cell(res, 1, 3, fmt(na(years) ? na : sumRoi / years, "#.##"))
+    table.cell(res, 2, 3, "25.0")
+    table.cell(res, 0, 4, "Avg ROI / trade %")
+    table.cell(res, 1, 4, fmt(nTrades > 0 ? sumRoi / nTrades : na, "#.###"))
+    table.cell(res, 2, 4, "0.189")
+    table.cell(res, 0, 5, "Win rate %")
+    table.cell(res, 1, 5, fmt(nTrades > 0 ? 100.0 * nWins / nTrades : na, "#.#"))
+    table.cell(res, 2, 5, "31.9")
+    table.cell(res, 0, 6, "Profit factor")
+    table.cell(res, 1, 6, fmt(pf, "#.##"))
+    table.cell(res, 2, 6, "1.65")
+    table.cell(res, 0, 7, "Max drawdown %")
+    table.cell(res, 1, 7, fmt(maxDD, "#.##"))
+    table.cell(res, 2, 7, "12.5")
