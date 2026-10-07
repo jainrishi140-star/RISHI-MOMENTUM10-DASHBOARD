@@ -119,6 +119,85 @@ weaker since 2021, at about 12-14% per year.
 
 Size positions for a 20-28% drawdown, not the 12.5% seen in the backtest.
 
+## Rishi TK TF Robust (trend-gated shorts)
+
+`robustness_research.py` tested 90 variations of Rishi TK TF Every-Candle on its 2009-2026
+trade log (2,324 trades). Each variation is decided only from what is known at the entry. Each
+was scored on the full period, in-sample 2009-2017 and out-of-sample 2018-2026, at 0, 0.02% and
+0.05% cost per side.
+
+**The rule kept.** BUY signals are traded as before. A SELL signal is shorted only when price is
+at or below its 30-day trend average (the time-weighted average of the signal prices over the
+last 30 calendar days). Above the average, the long is closed and the strategy stays flat until
+the next BUY.
+
+Why it works: Indian equities trend up over time. The 736 shorts taken against an uptrend
+made +13.7% in total over 17.6 years (0.02% a trade) and won only 27.6% of the time. They are
+where most of the whipsaws happen. The 426 shorts kept, taken in downtrends, average 0.20% a
+trade and still protect 2011, 2015 and 2020.
+
+| 2009-2026, 1x size | Every-Candle | Robust | Every-Candle, 0.02%/side | Robust, 0.02%/side |
+|---|---|---|---|---|
+| Trades | 2,324 | 1,588 | 2,324 | 1,588 |
+| CAGR (compounded) | 26.32% | 25.63% | 19.83% | **21.19%** |
+| Max DD (compounded) | 12.27% | **10.07%** | 14.70% | **11.04%** |
+| Total ROI / ROI per year | 436.8% / 24.8% | 423.1% / 24.0% | 343.8% / 19.5% | **359.6% / 20.4%** |
+| Max DD on ROI | 12.78% | **10.50%** | 15.58% | **11.58%** |
+| Profit factor | 1.65 | **1.92** | 1.47 | **1.71** |
+| Avg ROI / trade | 0.188% | **0.266%** | 0.148% | **0.226%** |
+| Worst year | +0.94% | **+2.60%** | −3.18% | **−0.40%** |
+| Out of sample 2018-26: CAGR / DD | 23.9% / 10.5% | 24.3% / 10.1% | 17.4% / 12.7% | **19.8% / 11.0%** |
+| Risk-matched (same DD as Every-Candle): size / CAGR | 1x / 26.3% | **1.23x / 32.0%** | 1x / 19.8% | **1.35x / 29.0%** |
+
+At 0.05% per side, CAGR is 10.7% for Every-Candle and 14.8% for Robust, with drawdowns of 22.1%
+and 12.5%.
+
+**Robustness of the rule**
+- **Lookback:** chosen on 2009-2017 only. Every lookback from 20 to 150 days lowers the drawdown,
+  and 30-50 and 100 days give almost the same result.
+- **Walk-forward:** the lookback was re-chosen each January from earlier data only. Over
+  2012-2026 at 0.02% cost this gives 17.8% CAGR / 12.9% DD, against 16.4% / 14.7% for
+  Every-Candle.
+- **Rolling 3-year windows:** better return per unit of drawdown in 13 of 16 windows with no
+  costs, and 15 of 16 at 0.02%.
+- **Year-block bootstrap (5,000 runs):**
+  - Lower drawdown: 91.7% of runs with no costs, 99.6% at 0.02%.
+  - Better return per unit of drawdown: 86.0% with no costs, 98.6% at 0.02%.
+  - Higher final equity: 34.5% with no costs, 80.3% at 0.02%.
+- **Monte Carlo, random trade order:** median / 95th-percentile max drawdown falls from
+  16.8 / 24.1% to 13.2 / 19.1% with no costs, and from 20.7 / 29.7% to 15.6 / 22.6% at 0.02%.
+- **Costs:** the rule takes 32% fewer trades, so it gains more the higher the costs.
+
+**Rejected, because they lost return or did not hold up out of sample**
+
+| Idea | Best result at 0.02% / side (Every-Candle: CAGR 19.8%, DD 14.7%) |
+|---|---|
+| Chop filter: efficiency ratio of recent signal prices | CAGR 17.7%, DD 12.9%; most settings much worse |
+| Chop filter: skip after many signals in a few days | CAGR 19.7%, DD 15.4%; most settings much worse |
+| Chop filter: skip after a losing streak | CAGR 13.0%, DD 18.4% |
+| Equity-curve filter (half size below its average) | CAGR 18.7%, DD 14.7% |
+| Trade only with the trend on both sides | CAGR 13.3%, DD 11.2%: counter-trend longs (buying dips) are the best trades |
+| Hold the long through an uptrend SELL instead of going flat | DD 13.1% at 30 days, worse at other lookbacks |
+| Smaller shorts always (x0.25) or long only | Lowest DD (9.0%), but losing years 2011 and 2020 (−6.1% worst year) |
+| Volatility targeting | Mostly adds leverage: CAGR 22.1%, DD 15.4% |
+| Time-of-day / weekday filters | No result held in both halves |
+
+The whipsaw losses are what the system pays to catch trends. Every filter that went flat in
+choppy periods also missed the start of the next trend. The only "chop" worth removing is
+shorting against an uptrend.
+
+**Use in TradingView.** `rishi_tk_tf_robust_strategy.pine` runs on a 1m NSE:NIFTY chart with
+Deep Backtesting.
+- Its table shows Every-Candle and Robust side by side, from the same signals.
+- The Pine version decides at the signal candle's close (the research used the next candle's
+  open), so expect small differences.
+- Set "Position size multiplier" to about 1.2 for the same drawdown as Every-Candle with more
+  return.
+
+```bash
+python3 robustness_research.py <rishi_every_candle_trades.csv> --out robustness_results.csv
+```
+
 ## Files
 
 | File | What it is |
@@ -126,6 +205,8 @@ Size positions for a 20-28% drawdown, not the 12.5% seen in the backtest.
 | `rishi_tk_tf.pine` | Rishi TK TF indicator for TradingView: BUY/SELL labels, alerts, status table |
 | `rishi_tk_tf_fixed_strategy.pine` | Simplest Rishi TK TF backtester for TradingView: fixed 09:45-15:15 checks built in, 1m chart only, for Deep Backtesting and trade-log export |
 | `rishi_tk_tf_strategy.pine` | Rishi TK TF backtester for TradingView (Deep Backtesting), with a results table next to the TK TF Original System's figures |
+| `rishi_tk_tf_robust_strategy.pine` | Rishi TK TF Robust: Every-Candle signals with trend-gated shorts, 1m chart only, table comparing it with plain Every-Candle |
+| `robustness_research.py`, `robustness_results.csv` | The 90 variations tested on the Every-Candle trade log, with in-sample / out-of-sample, cost, walk-forward, bootstrap and Monte Carlo checks |
 | `rishi_tk_tf.py` | Rishi TK TF in Python: `backtest`, `verify` / `checklog` against the TK TF Original System, `logstats` of a TK TF Original log |
 | `is_oos.py`, `monte_carlo.py` | In-sample / out-of-sample and Monte Carlo tests on two TradingView trade-list exports |
 | `*_results.csv`, `monthly_points_comparison.csv` | Saved results of the tests above |

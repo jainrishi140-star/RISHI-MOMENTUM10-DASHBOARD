@@ -1,0 +1,194 @@
+//@version=6
+// Rishi TK TF - Robust (trend-gated shorts), TradingView strategy / backtester
+//
+// Use on a 1-MINUTE NSE:NIFTY chart, with Deep Backtesting from 03 Feb 2009.
+//   Signals  : Rishi TK TF Every-Candle (Combined checked on every 1m candle)
+//              Slow = 30m LeadEMA(HLC3, 1.27) vs EMA(HLC3, 63); Fast = 1m blend of 14 EMAs of HLC3
+//   Longs    : every BUY signal, as before
+//   Shorts   : a SELL signal is shorted only when price is at or below the trend average, the
+//              time-weighted average of the signal prices over the last 30 calendar days. Above it
+//              (an uptrend) the long is closed and the strategy stays FLAT until the next BUY.
+//   Fills    : open of the candle after the signal. 1 crore x size multiplier per trade, so with
+//              multiplier 1 the Strategy Tester net profit / 1,00,000 = total ROI %.
+// The results table shows the plain Every-Candle system and this Robust version side by side,
+// both measured from the same signals (ROI % per trade on spot, minus the cost per side x 2).
+strategy("Rishi TK TF - Robust (Trend-Gated Shorts)", shorttitle = "Rishi TK TF Robust", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0)
+
+// ---------- Inputs ----------
+grpS = "Signals"
+slowLen  = input.int(63, "Slow EMA length (HLC3, 30m)", minval = 1, group = grpS)
+slowLead = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpS)
+
+grpR = "Robust rules"
+gateOn     = input.bool(true, "Trend-gated shorts", group = grpR, tooltip = "On: a SELL signal is shorted only when price is at or below the trend average; above it the strategy goes flat until the next BUY. Off: plain Rishi TK TF Every-Candle (always in the market).")
+gateDays   = input.int(30, "Trend average length (calendar days)", minval = 5, maxval = 365, group = grpR, tooltip = "Time-weighted average of the signal prices over this many calendar days. 30 was chosen on 2009-2017 and held up on 2018-2026; 20-50 and 100 work about as well.")
+shortUp    = input.float(0.0, "Short size above the average (0 = flat)", minval = 0.0, maxval = 1.0, step = 0.25, group = grpR)
+sizeMult   = input.float(1.0, "Position size multiplier", minval = 0.1, maxval = 5.0, step = 0.05, group = grpR, tooltip = "1 = 1 crore per trade. About 1.2-1.3 brings the Robust version's drawdown back to the Every-Candle level.")
+
+grpB = "Backtest"
+fromTime  = input.time(timestamp("03 Feb 2009 00:00 +0530"), "Backtest from", group = grpB)
+costPct   = input.float(0.0, "Cost per side for the table (%)", minval = 0.0, step = 0.01, group = grpB, tooltip = "Used by the results table. Set the same value as Commission in the strategy Properties for the Strategy Tester.")
+showStats = input.bool(true, "Show results table", group = grpB)
+showAvg   = input.bool(true, "Plot trend average", group = grpB)
+
+// ---------- Chart check ----------
+if not (timeframe.isminutes and timeframe.multiplier == 1)
+    runtime.error("Rishi TK TF Robust: please open a 1-minute NSE:NIFTY chart")
+
+// ---------- Slow (30m) ----------
+leadEma(float src, float a) =>
+    var float v = na
+    v := na(v) ? src : a * src + (1 - a) * v
+    v
+
+slowState() => math.sign(leadEma(hlc3, slowLead) - ta.ema(hlc3, slowLen))
+float slow = request.security(syminfo.tickerid, "30", slowState())
+
+// ---------- Fast (1m, this chart) ----------
+float fb = ta.ema(hlc3, 113)
+float fastScore = 0.0128 * (hlc3 - fb) - 0.0381 * (ta.ema(hlc3, 5) - fb) + 0.0198 * (ta.ema(hlc3, 10) - fb) + 0.1147 * (ta.ema(hlc3, 20) - fb) - 0.6092 * (ta.ema(hlc3, 40) - fb) + 0.5811 * (ta.ema(hlc3, 60) - fb) + 1.0 * (ta.ema(hlc3, 80) - fb) + 0.4886 * (ta.ema(hlc3, 100) - fb) - 0.2437 * (ta.ema(hlc3, 120) - fb) - 0.7241 * (ta.ema(hlc3, 140) - fb) - 0.8173 * (ta.ema(hlc3, 160) - fb) - 0.1915 * (ta.ema(hlc3, 200) - fb) + 0.5852 * (ta.ema(hlc3, 250) - fb) - 0.1643 * (ta.ema(hlc3, 300) - fb)
+float fast = math.sign(fastScore)
+
+// ---------- Combined, checked on every candle ----------
+var float comb = 0.0
+if slow == fast and slow != 0
+    comb := slow
+
+bool buySig  = comb == 1 and nz(comb[1]) == -1
+bool sellSig = comb == -1 and nz(comb[1]) == 1
+
+// ---------- Trend average of the signal prices ----------
+// Every signal is recorded at its fill (time and open of the candle after the signal), whether or
+// not it is traded. The average weights each signal price by how long it stood, over the last
+// gateDays calendar days. It is na until gateDays of signal history exist (shorts are then taken).
+var array<int>   flipT = array.new<int>()
+var array<float> flipP = array.new<float>()
+if nz(comb[1]) != nz(comb[2]) and nz(comb[1]) != 0
+    array.push(flipT, time)
+    array.push(flipP, open)
+    if array.size(flipT) > 2000
+        array.shift(flipT)
+        array.shift(flipP)
+
+flipAvg(array<int> ts, array<float> ps, int nowT, int days) =>
+    int lo = nowT - days * 86400000
+    int n = array.size(ts)
+    float num = 0.0
+    float den = 0.0
+    bool full = false
+    if n > 0
+        int segEnd = nowT
+        for i = n - 1 to 0
+            int t0 = array.get(ts, i)
+            int a = math.max(t0, lo)
+            if segEnd > a
+                num += array.get(ps, i) * (segEnd - a)
+                den += segEnd - a
+            segEnd := t0
+            if t0 <= lo
+                full := true
+                break
+    full and den > 0 ? num / den : na
+
+var float trendAvg = na
+if buySig or sellSig
+    trendAvg := flipAvg(flipT, flipP, time_close, gateDays)
+
+bool gated = gateOn and sellSig and not na(trendAvg) and close > trendAvg
+
+// ---------- Orders ----------
+bool inRange = time >= fromTime
+float qty = sizeMult * 10000000 / close
+if inRange and buySig
+    strategy.entry("Long", strategy.long, qty = qty)
+if inRange and sellSig
+    if not gated
+        strategy.entry("Short", strategy.short, qty = qty)
+    else if shortUp > 0
+        strategy.entry("Short", strategy.short, qty = qty * shortUp, comment = "Short (reduced)")
+    else
+        strategy.close("Long", comment = "Flat (uptrend)")
+
+// ---------- Chart display ----------
+float pos = strategy.position_size
+bgcolor(pos > 0 ? color.new(color.teal, 90) : pos < 0 ? color.new(color.red, 90) : na)
+plot(showAvg ? trendAvg : na, "Trend average", color.new(color.orange, 0), 2, plot.style_stepline)
+plotshape(inRange and buySig, "BUY", shape.labelup, location.belowbar, color.new(color.teal, 0), text = "BUY", textcolor = color.white, size = size.small)
+plotshape(inRange and sellSig and not gated, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0), text = "SELL", textcolor = color.white, size = size.small)
+plotshape(inRange and gated, "FLAT", shape.labeldown, location.abovebar, color.new(color.gray, 0), text = "FLAT", textcolor = color.white, size = size.small)
+plot(slow, "Slow", display = display.data_window)
+plot(fast, "Fast", display = display.data_window)
+plot(comb, "Combined", display = display.data_window)
+
+// ---------- Results table: Every-Candle vs Robust, from the same signals ----------
+type Stats
+    int   n      = 0
+    int   wins   = 0
+    float sum    = 0.0
+    float gw     = 0.0
+    float gl     = 0.0
+    float peak   = 0.0
+    float dd     = 0.0
+    float eq     = 1.0
+    float eqPeak = 1.0
+    float cdd    = 0.0
+
+method add(Stats s, float r) =>
+    s.n := s.n + 1
+    s.sum := s.sum + r
+    if r > 0
+        s.wins := s.wins + 1
+        s.gw := s.gw + r
+    else
+        s.gl := s.gl - r
+    s.peak := math.max(s.peak, s.sum)
+    s.dd := math.max(s.dd, s.peak - s.sum)
+    s.eq := s.eq * (1 + r / 100)
+    s.eqPeak := math.max(s.eqPeak, s.eq)
+    s.cdd := math.max(s.cdd, (s.eqPeak - s.eq) / s.eqPeak * 100)
+
+var Stats stBase = Stats.new()
+var Stats stRob  = Stats.new()
+var float entryPx     = na
+var int   entrySide   = 0
+var float entrySize   = 0.0
+var int   pendingSide = 0
+var float pendingSize = 0.0
+var float firstT      = na
+var float lastT       = na
+
+if pendingSide != 0
+    if entrySide != 0
+        float roi = entrySide * (open / entryPx - 1) * 100 - 2 * costPct
+        stBase.add(roi)
+        if entrySize > 0
+            stRob.add(entrySize * roi)
+        lastT := time
+    else
+        firstT := time
+    entryPx := open
+    entrySide := pendingSide
+    entrySize := pendingSize
+    pendingSide := 0
+
+if inRange and buySig
+    pendingSide := 1
+    pendingSize := sizeMult
+if inRange and sellSig
+    pendingSide := -1
+    pendingSize := gated ? sizeMult * shortUp : sizeMult
+
+fmt(float v, string f) => na(v) ? "-" : str.tostring(v, f)
+
+var table res = table.new(position.bottom_right, 3, 10, border_width = 1)
+if showStats and barstate.islast
+    float years = na(firstT) or na(lastT) or lastT <= firstT ? na : (lastT - firstT) / (365.25 * 86400000.0)
+    table.cell(res, 0, 0, "Rishi TK TF", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 1, 0, "Every-Candle", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 2, 0, "Robust", text_color = color.white, bgcolor = color.purple)
+    array<string> labels = array.from("Trades", "Total ROI %", "ROI / year %", "CAGR % (compounded)", "Max DD % (ROI)", "Max DD % (compounded)", "Profit factor", "Win rate %", "Avg ROI / trade %")
+    for [col, st] in array.from(stBase, stRob)
+        array<string> vals = array.from(str.tostring(st.n), fmt(st.sum, "#.##"), fmt(na(years) ? na : st.sum / years, "#.##"), fmt(na(years) ? na : (math.pow(st.eq, 1 / years) - 1) * 100, "#.##"), fmt(st.dd, "#.##"), fmt(st.cdd, "#.##"), fmt(st.gl > 0 ? st.gw / st.gl : na, "#.###"), fmt(st.n > 0 ? 100.0 * st.wins / st.n : na, "#.#"), fmt(st.n > 0 ? st.sum / st.n : na, "#.###"))
+        for row = 0 to array.size(labels) - 1
+            table.cell(res, 0, row + 1, array.get(labels, row))
+            table.cell(res, col + 1, row + 1, array.get(vals, row))
