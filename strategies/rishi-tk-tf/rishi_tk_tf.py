@@ -1,8 +1,8 @@
-"""In-house replica of the TK ALGO V1.1 Slow / Fast / Combined signals.
+"""Rishi TK TF: our in-house Slow / Fast / Combined system (Python version).
 
-Reverse-engineered from TradingView CSV exports that contain the original
-indicator's plotted Slow, Fast and Combined columns (1 = bullish, -1 = bearish),
-and from the original's trade logs (2009-2026).
+Built by reverse-engineering the TK TF Original System (TK ALGO V1.1) from TradingView CSV exports
+that contain its plotted Slow, Fast and Combined columns (1 = bullish, -1 = bearish), and from its
+trade logs (2009-2026). All changes are made in Rishi TK TF; the TK TF Original System is untouched.
 
     Slow     : 30-minute timeframe (chart independent)
                sign( LEAD(HLC3) - EMA(HLC3, 63) ), where LEAD is an EMA with
@@ -10,19 +10,22 @@ and from the original's trade logs (2009-2026).
     Fast     : chart timeframe (or a locked lower timeframe, e.g. 1m, via --fast-1m),
                sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113)
                (weights fitted on the 30m + 5m charts, validated on the 3m and 1m charts)
-    Combined : changes only when Slow and Fast agree, otherwise holds the previous state
+    Combined : changes only when Slow and Fast agree, otherwise holds the previous state.
+               In backtest mode it is checked only on candles closing at 09:45, 10:15 ... 15:15
+               (Rishi TK TF fixed check times); --every-candle checks on every candle, like the
+               TK TF Original System. verify and checklog always check every candle.
 
-Trades (as in the original's logs) are taken at the open of the bar after the signal bar.
+Trades (as in the TK TF Original System's logs) are taken at the open of the bar after the signal bar.
 
 Usage:
     python tk_algo.py verify    <tv_export.csv> [--htf <30m_export.csv>] [--fast-1m <1m_export.csv>]
     python tk_algo.py backtest  <tv_export.csv> [--htf <30m_export.csv>] [--fast-1m <1m_export.csv>]
-                                [--original] [--cost 0.02] [--out trades.csv]
+                                [--every-candle] [--original] [--cost 0.02] [--out trades.csv]
     python tk_algo.py checklog  <tv_export.csv> <trade_log.csv> --signal Slow|Fast|Combined [--htf ...]
     python tk_algo.py logstats  <trade_log.csv> [--from 2020-01-01] [--to 2026-09-30]
 
 backtest and logstats print the same statistics (total ROI, average yearly ROI, average ROI per
-trade, win rate, profit factor, max drawdown), so the replica can be compared with the original.
+trade, win rate, profit factor, max drawdown), so Rishi TK TF can be compared with TK TF Original.
 """
 import argparse
 import re
@@ -51,7 +54,7 @@ def load(path):
 
 
 def load_log(path):
-    """Original trade log: Date (dd-mm-yyyy HH:MM, execution time), Signal, ROI %."""
+    """TK TF Original System trade log: Date (dd-mm-yyyy HH:MM, execution time), Signal, ROI %."""
     with open(path, encoding="utf-8-sig") as f:
         rows = [line.split(",")[:3] for line in f.read().splitlines()
                 if re.match(r"\d\d-\d\d-\d{4} \d\d:\d\d,(Buy|Sell),", line)]
@@ -111,11 +114,22 @@ def map_htf_to_chart(htf_sig, chart_index, bar_minutes):
     return pd.Series(s.reindex(chart_close, method="ffill").values, index=chart_index)
 
 
-def combined_signal(slow, fast):
+CHECK_FIRST, CHECK_LAST = 9 * 60 + 45, 15 * 60 + 15  # Rishi TK TF fixed check times (minutes)
+
+
+def check_mask(index, bar_minutes):
+    """True for candles closing at 09:45, 10:15 ... 15:15."""
+    close = index + pd.Timedelta(minutes=bar_minutes)
+    m = close.hour * 60 + close.minute
+    return (m >= CHECK_FIRST) & (m <= CHECK_LAST) & ((m - CHECK_FIRST) % 30 == 0)
+
+
+def combined_signal(slow, fast, check=None):
+    """Take a new side only when Slow and Fast agree; with `check`, only on check candles."""
     out = np.zeros(len(slow))
     cur = 0.0
     for i, (s, f) in enumerate(zip(slow, fast)):
-        if s == f and s != 0 and not np.isnan(s):
+        if (check is None or check[i]) and s == f and s != 0 and not np.isnan(s):
             cur = s
         out[i] = cur
     return out
@@ -125,12 +139,13 @@ def bar_minutes_of(df):
     return int(pd.Series(df.index).diff().dt.total_seconds().div(60).mode()[0])
 
 
-def compute(df, htf=None, fast_df=None):
+def compute(df, htf=None, fast_df=None, lock_checks=False):
     """Slow/Fast/Combined on the chart bars of df. With fast_df (e.g. 1m bars), Fast and
     Combined are computed on fast_df's bars and each chart bar takes the value at its last
-    fast_df bar, i.e. what the locked-timeframe chart shows at that moment."""
+    fast_df bar, i.e. what the locked-timeframe chart shows at that moment. With lock_checks,
+    Combined is only checked at the fixed 09:45-15:15 times."""
     if fast_df is not None and bar_minutes_of(fast_df) < bar_minutes_of(df):
-        low = compute(fast_df, htf if htf is not None else to_30m(df))
+        low = compute(fast_df, htf if htf is not None else to_30m(df), lock_checks=lock_checks)
         last_low_bar = df.index + pd.Timedelta(minutes=bar_minutes_of(df) - bar_minutes_of(fast_df))
         out = pd.DataFrame(low[["Fast", "Combined"]].reindex(last_low_bar, method="ffill").values,
                            index=df.index, columns=["Fast", "Combined"])
@@ -145,12 +160,13 @@ def compute(df, htf=None, fast_df=None):
         slow = map_htf_to_chart(slow_signal(htf), df.index, bar_minutes).values
     fast = fast_signal(df).values
     out = pd.DataFrame({"Slow": slow, "Fast": fast}, index=df.index)
-    out["Combined"] = combined_signal(out.Slow.values, out.Fast.values)
+    check = check_mask(df.index, bar_minutes) if lock_checks else None
+    out["Combined"] = combined_signal(out.Slow.values, out.Fast.values, check)
     return out
 
 
 def flips(df, state):
-    """Signal events as the original logs them: (execution time = next bar open, side)."""
+    """Signal events as the TK TF Original System logs them: (execution time = next bar open, side)."""
     s = pd.Series(np.asarray(state, dtype=float), index=df.index).replace(0, np.nan).ffill()
     f = s[(s != s.shift()) & s.shift().notna()]
     nxt = pd.Series(list(df.index[1:]) + [pd.NaT], index=df.index)
@@ -165,7 +181,7 @@ def verify(df, sig, warmup_days=10):
         a = flips(df[m], df.loc[m, col].values)
         r = flips(df[m], sig.loc[m, col].values)
         exact = len(a.merge(r, on=["time", "side"])) / max(len(a), 1)
-        print(f"{col:9s} bars: {acc:.2%}  signals: {len(a)} original / {len(r)} replica, "
+        print(f"{col:9s} bars: {acc:.2%}  signals: {len(a)} TK TF Original / {len(r)} Rishi TK TF, "
               f"exact same bar: {exact:.1%}")
 
 
@@ -175,12 +191,12 @@ def check_log(df, sig, log, col, warmup_days=10):
     r = r[r.time >= start]
     lg = log[(log.time >= start) & (log.time <= df.index[-1])]
     hit = lg.merge(r, left_on=["time", "side"], right_on=["time", "side"])
-    print(f"{col}: log signals {len(lg)} | replica {len(r)} | exact matches {len(hit)} "
+    print(f"{col}: TK TF Original log signals {len(lg)} | Rishi TK TF {len(r)} | exact matches {len(hit)} "
           f"({len(hit) / max(len(lg), 1):.1%})")
 
 
 def summarize(roi, times):
-    """Statistics on per-trade ROI % (non-compounded, like the original's logs). Max drawdown is
+    """Statistics on per-trade ROI % (non-compounded, like the TK TF Original System's logs). Max drawdown is
     the largest drop of the cumulative ROI % from its running peak, starting from 0."""
     roi = np.asarray(roi, dtype=float)
     times = pd.to_datetime(pd.Series(times))
@@ -202,7 +218,7 @@ def print_summary(label, st):
 
 def backtest(df, sig, col="Combined", cost=0.0):
     """Always-in-market reversal, filled at the open of the bar after the signal
-    (the original's convention). ROI % per trade on spot; `cost` is % per side."""
+    (the TK TF Original System's convention). ROI % per trade on spot; `cost` is % per side."""
     ev = flips(df, sig[col].values)
     px = df.open.reindex(ev.time).values
     gross = ev.side.values[:-1] * (px[1:] / px[:-1] - 1) * 100
@@ -224,12 +240,15 @@ if __name__ == "__main__":
     ap.add_argument("mode", choices=["verify", "backtest", "checklog", "logstats"])
     ap.add_argument("csv", help="TradingView export of NSE:NIFTY (time, open, high, low, close, ...), "
                                 "or the trade log in logstats mode")
-    ap.add_argument("log", nargs="?", help="original trade log (checklog mode)")
+    ap.add_argument("log", nargs="?", help="TK TF Original System trade log (checklog mode)")
     ap.add_argument("--htf", help="30m TradingView export (longer Slow EMA history)")
     ap.add_argument("--fast-1m", help="1m export: lock Fast (and Combined) to the 1m timeframe")
     ap.add_argument("--signal", default="Combined", choices=["Slow", "Fast", "Combined"])
     ap.add_argument("--original", action="store_true",
-                    help="backtest the original indicator's exported columns instead of the replica")
+                    help="backtest the TK TF Original System's exported columns instead of Rishi TK TF")
+    ap.add_argument("--every-candle", action="store_true",
+                    help="backtest Rishi TK TF checking Combined on every candle (TK TF Original "
+                         "behaviour) instead of only at 09:45-15:15")
     ap.add_argument("--cost", type=float, default=0.0, help="cost per side in %% (e.g. 0.02)")
     ap.add_argument("--out", help="save the trade list of --signal to this CSV")
     ap.add_argument("--from", dest="date_from", help="first date to include, e.g. 2020-01-01")
@@ -246,7 +265,8 @@ if __name__ == "__main__":
     fast_df = load(a.fast_1m) if a.fast_1m else None
     if fast_df is not None:  # Fast/Combined only exist where 1m data exists
         df = df[(df.index >= fast_df.index[0]) & (df.index <= fast_df.index[-1])]
-    sig = compute(df, load(a.htf) if a.htf else None, fast_df)
+    lock = a.mode == "backtest" and not a.every_candle  # verify/checklog compare like-for-like
+    sig = compute(df, load(a.htf) if a.htf else None, fast_df, lock_checks=lock)
     if a.mode == "verify":
         verify(df, sig)
     elif a.mode == "checklog":
@@ -255,7 +275,9 @@ if __name__ == "__main__":
         df = df[df.index >= df.index[0] + pd.Timedelta(days=10)]  # indicator warm-up
         df = df[(df.index >= lo) & (df.index < hi)]
         sig = df[["Slow", "Fast", "Combined"]].fillna(0) if a.original else sig.loc[df.index]
-        print(f"Backtest {df.index[0]} -> {df.index[-1]} | cost {a.cost}% per side")
+        system = "TK TF Original (exported columns)" if a.original else (
+            "Rishi TK TF, checks every candle" if a.every_candle else "Rishi TK TF, checks 09:45-15:15")
+        print(f"{system} | backtest {df.index[0]} -> {df.index[-1]} | cost {a.cost}% per side")
         trades = {c: backtest(df, sig, c, a.cost) for c in ["Slow", "Fast", "Combined"]}
         if a.out:
             trades[a.signal].to_csv(a.out, index=False)

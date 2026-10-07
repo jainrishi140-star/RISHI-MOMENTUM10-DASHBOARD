@@ -1,30 +1,30 @@
 //@version=6
-// TK Replica as a TradingView STRATEGY, for comparing its statistics with the original TK TF
-// Combined trade log (2009-2026, 1m chart). Same signal code as tk_replica.pine.
+// Rishi TK TF as a TradingView STRATEGY (backtester). Same signal code as rishi_tk_tf.pine.
+// Its results can be compared with the TK TF Original System's Combined trade log (2009-2026, 1m).
 //
-// How the original's log was built, and how this strategy reproduces it:
+// Trading rules (same conventions as the TK TF Original System's log):
 //   - always in the market: every Combined signal reverses the position
 //   - "Check signals only at 30-min marks" (default on) checks Combined only at 09:45 ... 15:15;
-//     turn it off to reproduce the original's every-candle checks
+//     turn it off to check on every candle, like the TK TF Original System
 //   - filled at the OPEN of the candle after the signal candle (TradingView's default fill)
 //   - ROI % per trade on spot NSE:NIFTY, not compounded
 // The results table (bottom right) shows total ROI, average ROI per year and per trade, win rate,
-// profit factor and max drawdown, measured exactly like the original's logs, next to the
-// original's figures. It covers the chart's loaded history; for 2009-2026 use a 1m NSE:NIFTY
+// profit factor and max drawdown, measured exactly like the TK TF Original System's logs, next to
+// its figures. It covers the chart's loaded history; for 2009-2026 use a 1m NSE:NIFTY
 // chart with Deep Backtesting. In the Strategy Tester each trade is 1 crore, so net profit /
 // 1,00,000 = total ROI %.
-strategy("TK Replica Strategy", shorttitle = "TK Replica Strat", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0)
+strategy("Rishi TK TF Strategy", shorttitle = "Rishi TK TF Strat", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0)
 
 grpS = "Signal source"
-useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the original's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
+useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the TK TF Original System's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
 altSym = input.symbol("NSE:NIFTY1!", "Signal symbol", group = grpS)
 
 grpP = "Parameters"
 slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
 slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
 slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
-lockChecks = input.bool(true, "Check signals only at 30-min marks (09:45-15:15)", group = grpP, tooltip = "On: Combined is checked only when a chart candle closes at 09:45, 10:15, 10:45 ... 15:15 (exchange time). Changes between checks, or after 15:15, wait for the next check (next day 09:45). Off: the original's behaviour, checked on every candle.")
-fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the original's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the original does.")
+lockChecks = input.bool(true, "Check signals only at 30-min marks (09:45-15:15)", group = grpP, tooltip = "On: Combined is checked only when a chart candle closes at 09:45, 10:15, 10:45 ... 15:15 (exchange time). Changes between checks, or after 15:15, wait for the next check (next day 09:45). Off: checked on every candle, like the TK TF Original System.")
+fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the TK TF Original System's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the TK TF Original System does.")
 
 grpD = "Display"
 showSlow = input.bool(false, "Slow signals", group = grpD, inline = "sig")
@@ -51,7 +51,7 @@ fastState() =>
     math.sign(score)
 
 // Slow: the 30m value appears on the chart candle that closes with the 30m candle (e.g. the 09:44
-// candle on a 1m chart, closing at 09:45), exactly as the original shows it.
+// candle on a 1m chart, closing at 09:45), as the TK TF Original System shows it.
 float slow = request.security(sym, slowTf, slowState())
 float slowLine = request.security(sym, slowTf, slowEma())
 
@@ -65,7 +65,7 @@ float  fastChart  = request.security(sym, timeframe.period, fastState())
 array<float> fastIntra = request.security_lower_tf(sym, fastReqTf, fastState())
 
 var float fast     = na
-var float combFree = 0.0  // original behaviour: checked on every (intrabar) candle
+var float combFree = 0.0  // checked on every (intrabar) candle, like the TK TF Original System
 if fastLocked
     int n = array.size(fastIntra)
     if n > 0
@@ -111,7 +111,7 @@ plotshape(showSlow and slowSell, "Slow SELL", shape.triangledown, location.above
 plotshape(showFast and fastBuy,  "Fast BUY",  shape.circle, location.belowbar, color.new(color.aqua, 0),   text = "F", size = size.tiny)
 plotshape(showFast and fastSell, "Fast SELL", shape.circle, location.abovebar, color.new(color.fuchsia, 0), text = "F", size = size.tiny)
 
-// Hidden plots so the values appear in the Data Window and CSV export, for comparison with the original
+// Hidden plots so the values appear in the Data Window and CSV export, for comparison with TK TF Original
 plot(slow, "Slow", display = display.data_window)
 plot(fast, "Fast", display = display.data_window)
 plot(comb, "Combined", display = display.data_window)
@@ -121,7 +121,7 @@ stateColor(float s) => s == 1 ? color.teal : s == -1 ? color.red : color.gray
 
 var table tbl = table.new(position.top_right, 2, 4, border_width = 1)
 if showTbl and barstate.islast
-    table.cell(tbl, 0, 0, "TK Replica", text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 0, 0, "Rishi TK TF", text_color = color.white, bgcolor = color.purple)
     table.cell(tbl, 1, 0, sym, text_color = color.white, bgcolor = color.purple)
     table.cell(tbl, 0, 1, "Slow (" + slowTf + ")")
     table.cell(tbl, 1, 1, stateText(slow), text_color = color.white, bgcolor = stateColor(slow))
@@ -139,7 +139,7 @@ showStats = input.bool(true, "Show results table", group = grpB)
 
 float sigState = tradeSig == "Combined" ? comb : tradeSig == "Slow" ? slow : fast
 bool inRange = time >= fromTime and time <= toTime
-// Trade only on a signal change, like the original's log (no entry on the first bar of the range)
+// Trade only on a signal change (no entry on the first bar of the range)
 bool goLong  = flipUp(sigState)
 bool goShort = flipDn(sigState)
 if inRange and goLong
@@ -149,7 +149,7 @@ if inRange and goShort
 if not inRange and time > toTime
     strategy.close_all()
 
-// Results table: same statistics as the Python backtester and the original's logs.
+// Results table: same statistics as the Python backtester and the TK TF Original System's logs.
 // Fill = open of the candle after the signal, ROI % per trade on price, not compounded,
 // max drawdown = largest fall of the cumulative ROI % from its peak.
 var float entryPx     = na
@@ -196,8 +196,8 @@ if showStats and barstate.islast
     float years = na(firstT) or na(lastT) or lastT <= firstT ? na : (lastT - firstT) / (365.25 * 86400000.0)
     float pf    = grossLoss > 0 ? grossWin / grossLoss : na
     table.cell(res, 0, 0, tradeSig + " backtest", text_color = color.white, bgcolor = color.purple)
-    table.cell(res, 1, 0, "Replica", text_color = color.white, bgcolor = color.purple)
-    table.cell(res, 2, 0, "Original Combined 2009-26", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 1, 0, "Rishi TK TF", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 2, 0, "TK TF Original 2009-26", text_color = color.white, bgcolor = color.purple)
     table.cell(res, 0, 1, "Trades")
     table.cell(res, 1, 1, str.tostring(nTrades))
     table.cell(res, 2, 1, "2336")

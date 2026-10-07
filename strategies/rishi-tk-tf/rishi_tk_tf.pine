@@ -1,30 +1,30 @@
 //@version=6
-// In-house replica of the TK ALGO V1.1 Slow / Fast / Combined signals.
-// Reverse-engineered from TradingView exports of the original indicator's plots and its
-// 2009-2026 trade logs (see README.md in this folder for the match statistics).
+// Rishi TK TF: our in-house Slow / Fast / Combined system, built by reverse-engineering the
+// TK TF Original System (TK ALGO V1.1) from its TradingView exports and 2009-2026 trade logs
+// (see README.md in this folder). All changes are made here; the TK TF Original System is untouched.
 //
 //   Slow     : 30m timeframe  -> sign( LEAD(HLC3) - EMA(HLC3, 63) )
 //              LEAD is an EMA with smoothing factor 1.27 (> 1), so it leads price instead of lagging
 //   Fast     : sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113), on the "Fast timeframe"
-//              (default 1 minute, as in the original's logs; empty = chart timeframe, like the original)
+//              (default 1 minute, as in the TK TF Original System's logs; empty = chart timeframe)
 //   Combined : takes a new side only when Slow and Fast agree, otherwise keeps the previous side.
 //              With "Check signals only at 30-min marks" on (default), this is checked only at
 //              09:45, 10:15 ... 15:15; the next check after 15:15 is 09:45 the next day.
 //
 // Use on a 1m-30m chart of NSE:NIFTY. Signals are final when the candle closes: set alerts to
 // "Once Per Bar Close".
-indicator("TK Replica (Slow / Fast / Combined)", shorttitle = "TK Replica", overlay = true)
+indicator("Rishi TK TF (Slow / Fast / Combined)", shorttitle = "Rishi TK TF", overlay = true)
 
 grpS = "Signal source"
-useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the original's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
+useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the TK TF Original System's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
 altSym = input.symbol("NSE:NIFTY1!", "Signal symbol", group = grpS)
 
 grpP = "Parameters"
 slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
 slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
 slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
-lockChecks = input.bool(true, "Check signals only at 30-min marks (09:45-15:15)", group = grpP, tooltip = "On: Combined is checked only when a chart candle closes at 09:45, 10:15, 10:45 ... 15:15 (exchange time). Changes between checks, or after 15:15, wait for the next check (next day 09:45). Off: the original's behaviour, checked on every candle.")
-fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the original's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the original does.")
+lockChecks = input.bool(true, "Check signals only at 30-min marks (09:45-15:15)", group = grpP, tooltip = "On: Combined is checked only when a chart candle closes at 09:45, 10:15, 10:45 ... 15:15 (exchange time). Changes between checks, or after 15:15, wait for the next check (next day 09:45). Off: checked on every candle, like the TK TF Original System.")
+fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the TK TF Original System's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the TK TF Original System does.")
 
 grpD = "Display"
 showSlow = input.bool(false, "Slow signals", group = grpD, inline = "sig")
@@ -51,7 +51,7 @@ fastState() =>
     math.sign(score)
 
 // Slow: the 30m value appears on the chart candle that closes with the 30m candle (e.g. the 09:44
-// candle on a 1m chart, closing at 09:45), exactly as the original shows it.
+// candle on a 1m chart, closing at 09:45), as the TK TF Original System shows it.
 float slow = request.security(sym, slowTf, slowState())
 float slowLine = request.security(sym, slowTf, slowEma())
 
@@ -65,7 +65,7 @@ float  fastChart  = request.security(sym, timeframe.period, fastState())
 array<float> fastIntra = request.security_lower_tf(sym, fastReqTf, fastState())
 
 var float fast     = na
-var float combFree = 0.0  // original behaviour: checked on every (intrabar) candle
+var float combFree = 0.0  // checked on every (intrabar) candle, like the TK TF Original System
 if fastLocked
     int n = array.size(fastIntra)
     if n > 0
@@ -111,22 +111,22 @@ plotshape(showSlow and slowSell, "Slow SELL", shape.triangledown, location.above
 plotshape(showFast and fastBuy,  "Fast BUY",  shape.circle, location.belowbar, color.new(color.aqua, 0),   text = "F", size = size.tiny)
 plotshape(showFast and fastSell, "Fast SELL", shape.circle, location.abovebar, color.new(color.fuchsia, 0), text = "F", size = size.tiny)
 
-// Hidden plots so the values appear in the Data Window and CSV export, for comparison with the original
+// Hidden plots so the values appear in the Data Window and CSV export, for comparison with TK TF Original
 plot(slow, "Slow", display = display.data_window)
 plot(fast, "Fast", display = display.data_window)
 plot(comb, "Combined", display = display.data_window)
 
-alertcondition(combBuy,  "Combined BUY",  "TK Replica: Combined BUY on {{ticker}} at {{close}}")
-alertcondition(combSell, "Combined SELL", "TK Replica: Combined SELL on {{ticker}} at {{close}}")
-alertcondition(slowBuy,  "Slow BUY",  "TK Replica: Slow BUY on {{ticker}} at {{close}}")
-alertcondition(slowSell, "Slow SELL", "TK Replica: Slow SELL on {{ticker}} at {{close}}")
+alertcondition(combBuy,  "Combined BUY",  "Rishi TK TF: Combined BUY on {{ticker}} at {{close}}")
+alertcondition(combSell, "Combined SELL", "Rishi TK TF: Combined SELL on {{ticker}} at {{close}}")
+alertcondition(slowBuy,  "Slow BUY",  "Rishi TK TF: Slow BUY on {{ticker}} at {{close}}")
+alertcondition(slowSell, "Slow SELL", "Rishi TK TF: Slow SELL on {{ticker}} at {{close}}")
 
 stateText(float s) => s == 1 ? "BULL" : s == -1 ? "BEAR" : "-"
 stateColor(float s) => s == 1 ? color.teal : s == -1 ? color.red : color.gray
 
 var table tbl = table.new(position.top_right, 2, 4, border_width = 1)
 if showTbl and barstate.islast
-    table.cell(tbl, 0, 0, "TK Replica", text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 0, 0, "Rishi TK TF", text_color = color.white, bgcolor = color.purple)
     table.cell(tbl, 1, 0, sym, text_color = color.white, bgcolor = color.purple)
     table.cell(tbl, 0, 1, "Slow (" + slowTf + ")")
     table.cell(tbl, 1, 1, stateText(slow), text_color = color.white, bgcolor = stateColor(slow))

@@ -1,4 +1,4 @@
-Month,Orig trades,Rep trades,Orig points,Rep points,Diff points,Orig ROI %,Rep ROI %,Orig cum points,Rep cum points
+Month,TK TF Original trades,Rishi TK TF trades,TK TF Original points,Rishi TK TF points,Diff points (Rishi - TK TF Original),TK TF Original ROI %,Rishi TK TF ROI %,TK TF Original cum points,Rishi TK TF cum points
 2009-02,6,6,-60.73,-53.94,6.8,-2.36,-2.12,-60.73,-53.94
 2009-03,6,6,333.86,336.5,2.64,12.68,12.78,273.12,282.56
 2009-04,12,12,313.37,289.56,-23.81,10.35,9.65,586.5,572.12

@@ -1,6 +1,6 @@
-"""Monte Carlo simulation on TradingView strategy trade lists (original vs replica).
+"""Monte Carlo simulation on TradingView strategy trade lists (TK TF Original System vs Rishi TK TF).
 
-Uses the per-trade ROI % of the closed trades (not compounded, like the original's logs) and runs:
+Uses the per-trade ROI % of the closed trades (not compounded, like the TK TF Original System's logs) and runs:
   1. Reshuffle    : random trade order -> distribution of max drawdown and losing streaks
   2. Bootstrap    : full-length resampling with replacement -> total ROI, ROI/yr, PF, max drawdown
   3. One year     : resample one year of trades from the whole history -> yearly ROI and drawdown
@@ -8,7 +8,7 @@ Uses the per-trade ROI % of the closed trades (not compounded, like the original
   5. Stress       : drop --skip of the trades at random and charge --cost % per side
 
 Usage:
-    python monte_carlo.py <original_trades.csv> <replica_trades.csv> [--runs 10000] [--seed 7]
+    python monte_carlo.py <tk_tf_original_trades.csv> <rishi_tk_tf_trades.csv> [--runs 10000] [--seed 7]
                           [--recent 2021-01-01] [--skip 0.10] [--cost 0.02]
 """
 import argparse
@@ -82,8 +82,8 @@ def simulate(roi, years, recent_roi, args, rng):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("original")
-    ap.add_argument("replica")
+    ap.add_argument("original", help="TK TF Original System trade list")
+    ap.add_argument("replica", help="Rishi TK TF trade list")
     ap.add_argument("--runs", type=int, default=10000)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--recent", default="2021-01-01")
@@ -93,7 +93,7 @@ def main():
     args = ap.parse_args()
 
     tables = []
-    for label, path in (("Original", args.original), ("Replica", args.replica)):
+    for label, path in (("TK TF Original", args.original), ("Rishi TK TF", args.replica)):
         tr = load_trades(path)
         years = (tr.time.max() - tr.time.min()).days / 365.25
         recent = tr[tr.time >= pd.Timestamp(args.recent)].roi.values

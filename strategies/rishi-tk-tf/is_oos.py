@@ -1,14 +1,14 @@
 """In-sample / out-of-sample robustness test on TradingView strategy trade lists.
 
 Takes the "List of trades" CSV exports (columns: label, DATE, TYPE, PRICE, ROI, POINTS) of the
-original TK TF Combined strategy and of the replica, and runs 10 IS/OOS split variations on each.
+TK TF Original System (Combined) and of Rishi TK TF, and runs 10 IS/OOS split variations on each.
 For every variation it reports, for the in-sample and out-of-sample parts: trades, ROI % per year,
 average ROI per trade, win rate, profit factor and max drawdown, plus the walk-forward efficiency
-(OOS ROI per year / IS ROI per year), and how many of the original's OOS trades the replica hits
+(OOS ROI per year / IS ROI per year), and how many of TK TF Original's OOS trades Rishi TK TF hits
 on the same minute.
 
 Usage:
-    python is_oos.py <original_trades.csv> <replica_trades.csv> [--set 10|50] [--out results.csv]
+    python is_oos.py <tk_tf_original_trades.csv> <rishi_tk_tf_trades.csv> [--set 10|50] [--out results.csv]
 
 --set 10 (default) runs the 10 headline designs. --set 50 runs 50 time-period designs:
 15 forward anchored splits, 15 backward anchored splits, 10 walk-forward configurations and
@@ -99,7 +99,7 @@ def variations(start, end):
         out.append((f"{int(f * 100)}/{int(round((1 - f) * 100))} chronological split",
                     [(start, cut(f))], [(cut(f), end)], None))
     out.append(("IS 2009-2015 / OOS 2016-2026", [(start, T("2016-01-01"))], [(T("2016-01-01"), end)], None))
-    out.append(("IS 2020-2026 (replica fit period) / OOS 2009-2019",
+    out.append(("IS 2020-2026 (Rishi TK TF fit period) / OOS 2009-2019",
                 [(T("2020-01-01"), end)], [(start, T("2020-01-01"))], None))
     out.append(("Backward: IS 2nd half / OOS 1st half", [(cut(0.5), end)], [(start, cut(0.5))], None))
     years = range(start.year, end.year + 1)
@@ -118,7 +118,7 @@ def run(orig, rep, design=variations):
     end = max(orig.time.max(), rep.time.max()) + pd.Timedelta(minutes=1)
     rows = []
     for i, (name, is_p, oos_p, windows) in enumerate(design(start, end), 1):
-        for label, tr in (("Original", orig), ("Replica", rep)):
+        for label, tr in (("TK TF Original", orig), ("Rishi TK TF", rep)):
             if windows:  # walk-forward: average the IS windows, concatenate the OOS windows
                 ism = [metrics(select(tr, w[0]), span_years(w[0])) for w in windows]
                 m_is = {k: np.nanmean([m[k] for m in ism]) for k in ism[0]}
@@ -132,14 +132,14 @@ def run(orig, rep, design=variations):
                          "OOS avg/trade %": m_oos["avg"], "OOS win %": m_oos["win"], "OOS PF": m_oos["pf"],
                          "OOS max DD %": m_oos["dd"], "WFE %": 100 * m_oos["roi_yr"] / m_is["roi_yr"],
                          "OOS same-minute match %": same_minute_share(select(orig, oos_p), select(rep, oos_p))
-                         if label == "Replica" else np.nan})
+                         if label == "Rishi TK TF" else np.nan})
     return pd.DataFrame(rows)
 
 
 def summarize(res):
-    """Distribution of the OOS results over all variations, per strategy, and replica vs original."""
+    """Distribution of the OOS results over all variations, per strategy, and Rishi TK TF vs TK TF Original."""
     lines = []
-    for label in ("Original", "Replica"):
+    for label in ("TK TF Original", "Rishi TK TF"):
         r = res[res.Strategy == label]
         n = len(r)
         lines.append(
@@ -149,11 +149,11 @@ def summarize(res):
             f" max {r['OOS ROI/yr %'].max():.1f}) | OOS PF median {r['OOS PF'].median():.2f}"
             f" (min {r['OOS PF'].min():.2f}) | WFE median {r['WFE %'].median():.0f}%"
             f" (min {r['WFE %'].min():.0f}%) | OOS max DD worst {r['OOS max DD %'].max():.1f}")
-    o = res[res.Strategy == "Original"].set_index("#")
-    p = res[res.Strategy == "Replica"].set_index("#")
+    o = res[res.Strategy == "TK TF Original"].set_index("#")
+    p = res[res.Strategy == "Rishi TK TF"].set_index("#")
     d_roi = (p["OOS ROI/yr %"] - o["OOS ROI/yr %"]).abs()
     d_pf = (p["OOS PF"] - o["OOS PF"]).abs()
-    lines.append(f"Replica vs original OOS ROI/yr gap: median {d_roi.median():.2f}, max {d_roi.max():.2f} pts"
+    lines.append(f"Rishi TK TF vs TK TF Original OOS ROI/yr gap: median {d_roi.median():.2f}, max {d_roi.max():.2f} pts"
                  f" | OOS PF gap: median {d_pf.median():.3f}, max {d_pf.max():.3f}"
                  f" | OOS same-minute match: median {p['OOS same-minute match %'].median():.1f}%"
                  f" (min {p['OOS same-minute match %'].min():.1f}%)")
@@ -162,8 +162,8 @@ def summarize(res):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("original")
-    ap.add_argument("replica")
+    ap.add_argument("original", help="TK TF Original System trade list")
+    ap.add_argument("replica", help="Rishi TK TF trade list")
     ap.add_argument("--set", choices=["10", "50"], default="10")
     ap.add_argument("--out", help="save the full results table to this CSV")
     a = ap.parse_args()
