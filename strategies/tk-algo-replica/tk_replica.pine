@@ -7,7 +7,9 @@
 //              LEAD is an EMA with smoothing factor 1.27 (> 1), so it leads price instead of lagging
 //   Fast     : sign of a fixed weighted sum of EMA(HLC3, n) - EMA(HLC3, 113), on the "Fast timeframe"
 //              (default 1 minute, as in the original's logs; empty = chart timeframe, like the original)
-//   Combined : takes a new side only when Slow and Fast agree, otherwise keeps the previous side
+//   Combined : takes a new side only when Slow and Fast agree, otherwise keeps the previous side.
+//              With "Check signals only at 30-min marks" on (default), this is checked only at
+//              09:45, 10:15 ... 15:15; the next check after 15:15 is 09:45 the next day.
 //
 // Use on a 1m-30m chart of NSE:NIFTY. Signals are final when the candle closes: set alerts to
 // "Once Per Bar Close".
@@ -21,6 +23,7 @@ grpP = "Parameters"
 slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
 slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
 slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
+lockChecks = input.bool(true, "Check signals only at 30-min marks (09:45-15:15)", group = grpP, tooltip = "On: Combined is checked only when a chart candle closes at 09:45, 10:15, 10:45 ... 15:15 (exchange time). Changes between checks, or after 15:15, wait for the next check (next day 09:45). Off: the original's behaviour, checked on every candle.")
 fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the original's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the original does.")
 
 grpD = "Display"
@@ -61,8 +64,8 @@ bool   fastLocked = fastReqTf != timeframe.period
 float  fastChart  = request.security(sym, timeframe.period, fastState())
 array<float> fastIntra = request.security_lower_tf(sym, fastReqTf, fastState())
 
-var float fast = na
-var float comb = 0.0
+var float fast     = na
+var float combFree = 0.0  // original behaviour: checked on every (intrabar) candle
 if fastLocked
     int n = array.size(fastIntra)
     if n > 0
@@ -70,12 +73,23 @@ if fastLocked
             float f = array.get(fastIntra, i)
             float s = i == n - 1 ? slow : nz(slow[1])
             if s == f and s != 0
-                comb := s
+                combFree := s
         fast := array.get(fastIntra, n - 1)
 else
     fast := fastChart
     if slow == fast and slow != 0
+        combFree := slow
+
+// Fixed check times: the chart candle that closes at 09:45, 10:15 ... 15:15 exchange time
+int  closeMin = hour(time_close, "Asia/Kolkata") * 60 + minute(time_close, "Asia/Kolkata")
+bool isCheck  = closeMin >= 585 and closeMin <= 915 and (closeMin - 585) % 30 == 0
+
+var float comb = 0.0
+if lockChecks
+    if isCheck and slow == fast and slow != 0
         comb := slow
+else
+    comb := combFree
 
 flipUp(float s) => s == 1 and nz(s[1]) == -1
 flipDn(float s) => s == -1 and nz(s[1]) == 1

@@ -273,6 +273,26 @@ The historical max drawdown (12.5%) is at the lucky end of the simulated range. 
 a random order give a median drawdown of about 18%, and 26-28% at the 95th percentile. Size
 positions for a drawdown of 20-28%, not 12.5%.
 
+## Fixed 30-minute signal checks (09:45 - 15:15)
+
+Both Pine scripts have a **"Check signals only at 30-min marks (09:45-15:15)"** setting, on by
+default. With it on, Combined is checked only on the candles that close at 09:45, 10:15 … 15:15.
+Agreement between Slow and Fast at any other time, or after 15:15, waits for the next check; after
+15:15 the next check is 09:45 the next day. Turn it off to reproduce the original's every-candle
+behaviour.
+
+Effect on the original's own Slow and Fast signals, 2020-01 → 2026-09, filled at the check
+candle's open, no costs:
+
+| | Trades | Total ROI | Avg ROI/yr | Avg ROI/trade | Win % | PF | Max DD | CAGR |
+|---|---|---|---|---|---|---|---|---|
+| Original (checks every candle) | 904 | 153.6% | 23.0% | 0.170% | 31.4% | 1.62 | 10.6% | 24.0% |
+| Checks at 09:45-15:15 only | 849 | 159.0% | 23.8% | 0.187% | 32.0% | 1.67 | 13.4% | 25.0% |
+
+With 0.02% cost per side: 117.5% → 125.1% total ROI, PF 1.43 → 1.48, CAGR 17.5% → 18.8%.
+71% of the original's trades happen at the same time. Most of the rest are delayed to the next
+30-minute mark (90% within 29 minutes).
+
 ## Files
 
 - `tk_algo.py`: replica, `verify` against an export, `checklog` against an original trade log,
