@@ -1,5 +1,5 @@
 //@version=6
-// AC TF: our in-house Slow / Fast / Combined system, built by reverse-engineering the
+// ADC TF: our in-house Slow / Fast / Combined system, built by reverse-engineering the
 // TK TF Original System (TK ALGO V1.1) from its TradingView exports and 2009-2026 trade logs
 // (see README.md in this folder). All changes are made here; the TK TF Original System is untouched.
 //
@@ -13,7 +13,7 @@
 //
 // Use on a 1m-30m chart of NSE:NIFTY. Signals are final when the candle closes: set alerts to
 // "Once Per Bar Close".
-indicator("AC TF (Slow / Fast / Combined)", shorttitle = "AC TF", overlay = true, max_labels_count = 500, max_lines_count = 50)
+indicator("ADC TF (Slow / Fast / Combined)", shorttitle = "ADC TF", overlay = true, max_labels_count = 500, max_lines_count = 50)
 
 grpS = "Signal source"
 useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the TK TF Original System's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
@@ -146,10 +146,10 @@ plot(slow, "Slow", display = display.data_window)
 plot(fast, "Fast", display = display.data_window)
 plot(comb, "Combined", display = display.data_window)
 
-alertcondition(combBuy,  "Combined BUY",  "AC TF: Combined BUY on {{ticker}} at {{close}}")
-alertcondition(combSell, "Combined SELL", "AC TF: Combined SELL on {{ticker}} at {{close}}")
-alertcondition(slowBuy,  "Slow BUY",  "AC TF: Slow BUY on {{ticker}} at {{close}}")
-alertcondition(slowSell, "Slow SELL", "AC TF: Slow SELL on {{ticker}} at {{close}}")
+alertcondition(combBuy,  "Combined BUY",  "ADC TF: Combined BUY on {{ticker}} at {{close}}")
+alertcondition(combSell, "Combined SELL", "ADC TF: Combined SELL on {{ticker}} at {{close}}")
+alertcondition(slowBuy,  "Slow BUY",  "ADC TF: Slow BUY on {{ticker}} at {{close}}")
+alertcondition(slowSell, "Slow SELL", "ADC TF: Slow SELL on {{ticker}} at {{close}}")
 
 // ---------- Trades (for the P&L table and the entry line) ----------
 // Combined trades as in the trade logs: always in the market, every BUY / SELL reverses the
@@ -245,9 +245,9 @@ valueCell(table t, int c, int r, string txt, color bg) =>
     table.cell(t, c, r, txt, text_color = color.white, bgcolor = bg, text_size = tblSize, text_formatting = text.format_bold)
 
 // ---------- Status table (top right) ----------
-var table tbl = table.new(position.top_right, 2, 5, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
+var table tbl = table.new(position.top_right, 2, 4, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
 if showTbl and barstate.islast
-    headCell(tbl, 0, 0, "AC TF")
+    headCell(tbl, 0, 0, "ADC TF")
     headCell(tbl, 1, 0, syminfo.ticker)
     labelCell(tbl, 0, 1, "Slow (" + slowTf + "m)")
     valueCell(tbl, 1, 1, stateText(slow), stateCol(slow))
@@ -255,8 +255,6 @@ if showTbl and barstate.islast
     valueCell(tbl, 1, 2, stateText(fast), stateCol(fast))
     labelCell(tbl, 0, 3, "Combined")
     valueCell(tbl, 1, 3, stateText(comb), stateCol(comb))
-    labelCell(tbl, 0, 4, "Signal check")
-    valueCell(tbl, 1, 4, lockChecks ? "09:45-15:15" : "Every candle", accentCol)
 
 // ---------- Trade P&L table (bottom left) ----------
 var table pnl = table.new(position.bottom_left, 6, 7, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
@@ -274,7 +272,7 @@ if showPnl and barstate.islast
     float curRoi = trSide != 0 ? curPts / trEntry * 100 : na
     int   sz     = array.size(clPts)
     string sideTxt = trSide == 1 ? "▲ LONG" : trSide == -1 ? "▼ SHORT" : "–"
-    headCell(pnl, 0, 0, "AC TF trades")
+    headCell(pnl, 0, 0, "ADC TF trades")
     headCell(pnl, 1, 0, "Trades")
     headCell(pnl, 2, 0, "Points")
     headCell(pnl, 3, 0, "ROI %")
