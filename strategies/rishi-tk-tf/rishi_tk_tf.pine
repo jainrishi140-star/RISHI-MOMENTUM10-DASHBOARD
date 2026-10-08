@@ -13,7 +13,7 @@
 //
 // Use on a 1m-30m chart of NSE:NIFTY. Signals are final when the candle closes: set alerts to
 // "Once Per Bar Close".
-indicator("Rishi TK TF (Slow / Fast / Combined)", shorttitle = "Rishi TK TF", overlay = true)
+indicator("Rishi TK TF (Slow / Fast / Combined)", shorttitle = "Rishi TK TF", overlay = true, max_labels_count = 500, max_lines_count = 50)
 
 grpS = "Signal source"
 useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the TK TF Original System's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
@@ -27,13 +27,23 @@ lockChecks = input.bool(true, "Check signals only at 30-min marks (09:45-15:15)"
 fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the TK TF Original System's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the TK TF Original System does.")
 
 grpD = "Display"
-showSlow = input.bool(false, "Slow signals", group = grpD, inline = "sig")
-showFast = input.bool(false, "Fast signals", group = grpD, inline = "sig")
-showComb = input.bool(true, "Combined signals", group = grpD, inline = "sig")
-showEma  = input.bool(true, "Plot Slow EMA", group = grpD)
-showBg   = input.bool(true, "Shade Combined state", group = grpD)
-showTbl  = input.bool(true, "Status table", group = grpD)
-showPnl  = input.bool(true, "Trade P&L table (bottom left)", group = grpD, tooltip = "Combined trades: always in the market, each BUY / SELL reverses, filled at the open of the candle after the signal (same as the trade logs). Points are NIFTY points per 1 unit; ROI % is points / entry price. Rolling rows add up the last 3 / last 5 closed trades. Best on a 1m chart.")
+showSlow   = input.bool(false, "Slow signals", group = grpD, inline = "sig")
+showFast   = input.bool(false, "Fast signals", group = grpD, inline = "sig")
+showComb   = input.bool(true, "Combined signals", group = grpD, inline = "sig")
+showPrice  = input.bool(true, "Show price on BUY / SELL labels", group = grpD)
+showEma    = input.bool(true, "Plot Slow EMA (coloured by Slow)", group = grpD)
+showRibbon = input.bool(true, "Trend ribbon (price to Slow EMA)", group = grpD)
+showBg     = input.bool(false, "Shade background by Combined", group = grpD)
+showBars   = input.bool(false, "Colour candles by Combined", group = grpD)
+showEntry  = input.bool(true, "Entry line of the running trade", group = grpD)
+bullCol    = input.color(#089981, "Bull colour", group = grpD, inline = "col")
+bearCol    = input.color(#F23645, "Bear colour", group = grpD, inline = "col")
+accentCol  = input.color(#5E35B1, "Header colour", group = grpD, inline = "col")
+
+grpT = "Tables"
+showTbl  = input.bool(true, "Status table (top right)", group = grpT)
+showPnl  = input.bool(true, "Trade P&L table (bottom left)", group = grpT, tooltip = "Combined trades: always in the market, each BUY / SELL reverses, filled at the open of the candle after the signal (same as the trade logs). Points are NIFTY points per 1 unit; ROI % is points / entry price. Rolling rows add up the last 3 / last 5 closed trades. Best on a 1m chart.")
+tblSizeIn = input.string("Normal", "Table text size", options = ["Tiny", "Small", "Normal", "Large"], group = grpT)
 
 sym = useAlt ? altSym : syminfo.tickerid
 
@@ -102,15 +112,34 @@ slowSell = flipDn(slow)
 fastBuy  = flipUp(fast)
 fastSell = flipDn(fast)
 
-plot(showEma ? slowLine : na, "Slow EMA (30m HLC3)", color = color.new(color.orange, 0), linewidth = 2)
-bgcolor(showBg and comb == 1 ? color.new(color.teal, 90) : showBg and comb == -1 ? color.new(color.red, 90) : na)
+// ---------- Look ----------
+color neutCol = #787B86
+color lblBg   = #FFFFFF
+color lblTx   = #131722
+string tblSize = tblSizeIn == "Tiny" ? size.tiny : tblSizeIn == "Small" ? size.small : tblSizeIn == "Large" ? size.large : size.normal
+stateCol(float s) => s == 1 ? bullCol : s == -1 ? bearCol : neutCol
+stateText(float s) => s == 1 ? "▲ BULL" : s == -1 ? "▼ BEAR" : "–"
 
-plotshape(showComb and combBuy,  "Combined BUY",  shape.labelup,   location.belowbar, color.new(color.teal, 0), text = "BUY",  textcolor = color.white, size = size.small)
-plotshape(showComb and combSell, "Combined SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),  text = "SELL", textcolor = color.white, size = size.small)
-plotshape(showSlow and slowBuy,  "Slow BUY",  shape.triangleup,   location.belowbar, color.new(color.blue, 0),   text = "S", size = size.tiny)
-plotshape(showSlow and slowSell, "Slow SELL", shape.triangledown, location.abovebar, color.new(color.maroon, 0), text = "S", size = size.tiny)
-plotshape(showFast and fastBuy,  "Fast BUY",  shape.circle, location.belowbar, color.new(color.aqua, 0),   text = "F", size = size.tiny)
-plotshape(showFast and fastSell, "Fast SELL", shape.circle, location.abovebar, color.new(color.fuchsia, 0), text = "F", size = size.tiny)
+color combCol = stateCol(comb)
+color emaCol  = stateCol(slow)
+
+// Slow EMA with a soft glow, and a ribbon from price to the EMA in the Combined colour
+plot(showEma ? slowLine : na, "Slow EMA glow", color = color.new(emaCol, 80), linewidth = 6, display = display.pane)
+pEma   = plot(slowLine, "Slow EMA (30m HLC3)", color = showEma ? emaCol : na, linewidth = 2)
+pPrice = plot(close, "Price (ribbon)", color = na, display = display.none, editable = false)
+fill(pEma, pPrice, color = showRibbon ? color.new(combCol, 85) : na, title = "Trend ribbon")
+bgcolor(showBg and comb != 0 ? color.new(combCol, 92) : na, title = "Combined background")
+barcolor(showBars and comb != 0 ? combCol : na, title = "Combined candles")
+
+// Combined BUY / SELL labels
+if showComb and combBuy
+    label.new(bar_index, low, "BUY" + (showPrice ? "\n" + str.tostring(close, "#,##0.00") : ""), style = label.style_label_up, color = bullCol, textcolor = color.white, size = size.small, yloc = yloc.belowbar)
+if showComb and combSell
+    label.new(bar_index, high, "SELL" + (showPrice ? "\n" + str.tostring(close, "#,##0.00") : ""), style = label.style_label_down, color = bearCol, textcolor = color.white, size = size.small, yloc = yloc.abovebar)
+plotshape(showSlow and slowBuy,  "Slow BUY",  shape.triangleup,   location.belowbar, color.new(bullCol, 30), text = "S", textcolor = bullCol, size = size.tiny)
+plotshape(showSlow and slowSell, "Slow SELL", shape.triangledown, location.abovebar, color.new(bearCol, 30), text = "S", textcolor = bearCol, size = size.tiny)
+plotshape(showFast and fastBuy,  "Fast BUY",  shape.circle, location.belowbar, color.new(bullCol, 50), text = "F", textcolor = bullCol, size = size.tiny)
+plotshape(showFast and fastSell, "Fast SELL", shape.circle, location.abovebar, color.new(bearCol, 50), text = "F", textcolor = bearCol, size = size.tiny)
 
 // Hidden plots so the values appear in the Data Window and CSV export, for comparison with TK TF Original
 plot(slow, "Slow", display = display.data_window)
@@ -122,21 +151,7 @@ alertcondition(combSell, "Combined SELL", "Rishi TK TF: Combined SELL on {{ticke
 alertcondition(slowBuy,  "Slow BUY",  "Rishi TK TF: Slow BUY on {{ticker}} at {{close}}")
 alertcondition(slowSell, "Slow SELL", "Rishi TK TF: Slow SELL on {{ticker}} at {{close}}")
 
-stateText(float s) => s == 1 ? "BULL" : s == -1 ? "BEAR" : "-"
-stateColor(float s) => s == 1 ? color.teal : s == -1 ? color.red : color.gray
-
-var table tbl = table.new(position.top_right, 2, 4, border_width = 1)
-if showTbl and barstate.islast
-    table.cell(tbl, 0, 0, "Rishi TK TF", text_color = color.white, bgcolor = color.purple)
-    table.cell(tbl, 1, 0, sym, text_color = color.white, bgcolor = color.purple)
-    table.cell(tbl, 0, 1, "Slow (" + slowTf + ")")
-    table.cell(tbl, 1, 1, stateText(slow), text_color = color.white, bgcolor = stateColor(slow))
-    table.cell(tbl, 0, 2, "Fast (" + (fastLocked ? fastReqTf : "chart") + ")")
-    table.cell(tbl, 1, 2, stateText(fast), text_color = color.white, bgcolor = stateColor(fast))
-    table.cell(tbl, 0, 3, "Combined")
-    table.cell(tbl, 1, 3, stateText(comb), text_color = color.white, bgcolor = stateColor(comb))
-
-// ---------- Trade P&L table (bottom left) ----------
+// ---------- Trades (for the P&L table and the entry line) ----------
 // Combined trades as in the trade logs: always in the market, every BUY / SELL reverses the
 // position, filled at the open of the candle after the signal.
 var int   trSide   = 0
@@ -144,6 +159,7 @@ var float trEntry  = na
 var int   pendSide = 0
 var array<float> clPts = array.new<float>()
 var array<float> clRoi = array.new<float>()
+var line  entryLn  = na
 
 if pendSide != 0
     if trSide != 0
@@ -156,6 +172,9 @@ if pendSide != 0
     trSide := pendSide
     trEntry := open
     pendSide := 0
+    if showEntry
+        line.delete(entryLn)
+        entryLn := line.new(bar_index, trEntry, bar_index + 1, trEntry, extend = extend.right, color = color.new(stateCol(trSide), 20), style = line.style_dashed, width = 1)
 if combBuy
     pendSide := 1
 if combSell
@@ -170,10 +189,33 @@ lastSum(array<float> a, int k) =>
             s += array.get(a, i)
     [s, m]
 
-pnlText(float v) => na(v) ? "-" : (v > 0 ? "+" : "") + str.tostring(v, "#,##0.00")
-pnlColor(float v) => na(v) or v == 0 ? color.gray : v > 0 ? color.teal : color.red
+pnlText(float v) => na(v) ? "–" : (v > 0 ? "+" : "") + str.tostring(v, "#,##0.00")
+pnlCol(float v) => na(v) or v == 0 ? neutCol : v > 0 ? bullCol : bearCol
 
-var table pnl = table.new(position.bottom_left, 3, 4, border_width = 1)
+// ---------- Table helpers ----------
+headCell(table t, int c, int r, string txt) =>
+    table.cell(t, c, r, txt, text_color = color.white, bgcolor = accentCol, text_size = tblSize, text_formatting = text.format_bold)
+labelCell(table t, int c, int r, string txt) =>
+    table.cell(t, c, r, txt, text_color = lblTx, bgcolor = lblBg, text_size = tblSize, text_halign = text.align_left, text_formatting = text.format_bold)
+valueCell(table t, int c, int r, string txt, color bg) =>
+    table.cell(t, c, r, txt, text_color = color.white, bgcolor = bg, text_size = tblSize, text_formatting = text.format_bold)
+
+// ---------- Status table (top right) ----------
+var table tbl = table.new(position.top_right, 2, 5, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
+if showTbl and barstate.islast
+    headCell(tbl, 0, 0, "Rishi TK TF")
+    headCell(tbl, 1, 0, syminfo.ticker)
+    labelCell(tbl, 0, 1, "Slow (" + slowTf + "m)")
+    valueCell(tbl, 1, 1, stateText(slow), stateCol(slow))
+    labelCell(tbl, 0, 2, "Fast (" + (fastLocked ? fastReqTf : timeframe.period) + "m)")
+    valueCell(tbl, 1, 2, stateText(fast), stateCol(fast))
+    labelCell(tbl, 0, 3, "Combined")
+    valueCell(tbl, 1, 3, stateText(comb), stateCol(comb))
+    labelCell(tbl, 0, 4, "Signal check")
+    valueCell(tbl, 1, 4, lockChecks ? "09:45-15:15" : "Every candle", accentCol)
+
+// ---------- Trade P&L table (bottom left) ----------
+var table pnl = table.new(position.bottom_left, 3, 4, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
 if showPnl and barstate.islast
     float curPts = trSide != 0 ? trSide * (close - trEntry) : na
     float curRoi = trSide != 0 ? curPts / trEntry * 100 : na
@@ -181,16 +223,16 @@ if showPnl and barstate.islast
     [r3, k3] = lastSum(clRoi, 3)
     [p5, n5] = lastSum(clPts, 5)
     [r5, k5] = lastSum(clRoi, 5)
-    string sideTxt = trSide == 1 ? "LONG" : trSide == -1 ? "SHORT" : "-"
-    table.cell(pnl, 0, 0, "Rishi TK TF trades", text_color = color.white, bgcolor = color.purple)
-    table.cell(pnl, 1, 0, "Points", text_color = color.white, bgcolor = color.purple)
-    table.cell(pnl, 2, 0, "ROI %", text_color = color.white, bgcolor = color.purple)
-    table.cell(pnl, 0, 1, "Running " + sideTxt + (trSide != 0 ? " @ " + str.tostring(trEntry, "#,##0.00") : ""), text_color = color.black, bgcolor = color.white, text_formatting = text.format_bold)
-    table.cell(pnl, 1, 1, pnlText(curPts), text_color = color.white, bgcolor = pnlColor(curPts), text_formatting = text.format_bold)
-    table.cell(pnl, 2, 1, pnlText(curRoi), text_color = color.white, bgcolor = pnlColor(curRoi), text_formatting = text.format_bold)
-    table.cell(pnl, 0, 2, "Last 3 closed trades" + (n3 < 3 ? " (" + str.tostring(n3) + ")" : ""), text_color = color.black, bgcolor = color.white, text_formatting = text.format_bold)
-    table.cell(pnl, 1, 2, n3 > 0 ? pnlText(p3) : "-", text_color = color.white, bgcolor = n3 > 0 ? pnlColor(p3) : color.gray, text_formatting = text.format_bold)
-    table.cell(pnl, 2, 2, n3 > 0 ? pnlText(r3) : "-", text_color = color.white, bgcolor = n3 > 0 ? pnlColor(r3) : color.gray, text_formatting = text.format_bold)
-    table.cell(pnl, 0, 3, "Last 5 closed trades" + (n5 < 5 ? " (" + str.tostring(n5) + ")" : ""), text_color = color.black, bgcolor = color.white, text_formatting = text.format_bold)
-    table.cell(pnl, 1, 3, n5 > 0 ? pnlText(p5) : "-", text_color = color.white, bgcolor = n5 > 0 ? pnlColor(p5) : color.gray, text_formatting = text.format_bold)
-    table.cell(pnl, 2, 3, n5 > 0 ? pnlText(r5) : "-", text_color = color.white, bgcolor = n5 > 0 ? pnlColor(r5) : color.gray, text_formatting = text.format_bold)
+    string sideTxt = trSide == 1 ? "▲ LONG" : trSide == -1 ? "▼ SHORT" : "–"
+    headCell(pnl, 0, 0, "Rishi TK TF trades")
+    headCell(pnl, 1, 0, "Points")
+    headCell(pnl, 2, 0, "ROI %")
+    labelCell(pnl, 0, 1, "Running " + sideTxt + (trSide != 0 ? " @ " + str.tostring(trEntry, "#,##0.00") : ""))
+    valueCell(pnl, 1, 1, pnlText(curPts), pnlCol(curPts))
+    valueCell(pnl, 2, 1, pnlText(curRoi), pnlCol(curRoi))
+    labelCell(pnl, 0, 2, "Last 3 closed trades" + (n3 < 3 ? " (" + str.tostring(n3) + ")" : ""))
+    valueCell(pnl, 1, 2, n3 > 0 ? pnlText(p3) : "–", n3 > 0 ? pnlCol(p3) : neutCol)
+    valueCell(pnl, 2, 2, n3 > 0 ? pnlText(r3) : "–", n3 > 0 ? pnlCol(r3) : neutCol)
+    labelCell(pnl, 0, 3, "Last 5 closed trades" + (n5 < 5 ? " (" + str.tostring(n5) + ")" : ""))
+    valueCell(pnl, 1, 3, n5 > 0 ? pnlText(p5) : "–", n5 > 0 ? pnlCol(p5) : neutCol)
+    valueCell(pnl, 2, 3, n5 > 0 ? pnlText(r5) : "–", n5 > 0 ? pnlCol(r5) : neutCol)
