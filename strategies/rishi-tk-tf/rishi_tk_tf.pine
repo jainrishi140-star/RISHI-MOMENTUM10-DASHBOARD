@@ -259,7 +259,7 @@ if showTbl and barstate.islast
     valueCell(tbl, 1, 4, lockChecks ? "09:45-15:15" : "Every candle", accentCol)
 
 // ---------- Trade P&L table (bottom left) ----------
-var table pnl = table.new(position.bottom_left, 6, 8, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
+var table pnl = table.new(position.bottom_left, 6, 7, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
 
 pnlRow(int r, string name, float pts, float roi, float ddP, float ddR, int n) =>
     labelCell(pnl, 0, r, name)
@@ -287,9 +287,9 @@ if showPnl and barstate.islast
     [p5, r5, d5p, d5r, n5] = seqStats(math.max(sz - 5, 0), false, na, na)
     pnlRow(3, "Last 5 closed trades", p5, r5, d5p, d5r, n5)
     string since = str.format_time(firstT, "dd MMM yyyy", "Asia/Kolkata")
-    for [k, days] in array.from(7, 30, 91, 365)
+    for [k, days] in array.from(7, 30, 91)
         int fromT = time - days * 86400000
         [wp, wr, wdp, wdr, wn] = seqStats(firstIdxSince(fromT), true, curPts, curRoi)
-        string nm = days == 7 ? "Week (7 days)" : days == 30 ? "Month (30 days)" : days == 91 ? "Quarter (91 days)" : "Year (365 days)"
+        string nm = days == 7 ? "Week (7 days)" : days == 30 ? "Month (30 days)" : "Quarter (91 days)"
         pnlRow(4 + k, nm + (fromT < firstT ? " – since " + since : ""), wp, wr, wdp, wdr, wn)
     table.cell_set_tooltip(pnl, 0, 0, "Rolling windows count closed trades that exited inside the window plus the running trade. Max DD = largest peak-to-trough fall of the running total (running trade: largest give-back from its best point). Windows longer than the chart's loaded history show 'since <date>'.")
