@@ -33,6 +33,7 @@ showComb = input.bool(true, "Combined signals", group = grpD, inline = "sig")
 showEma  = input.bool(true, "Plot Slow EMA", group = grpD)
 showBg   = input.bool(true, "Shade Combined state", group = grpD)
 showTbl  = input.bool(true, "Status table", group = grpD)
+showPnl  = input.bool(true, "Trade P&L table (bottom left)", group = grpD, tooltip = "Combined trades: always in the market, each BUY / SELL reverses, filled at the open of the candle after the signal (same as the trade logs). Points are NIFTY points per 1 unit; ROI % is points / entry price. Rolling rows add up the last 3 / last 5 closed trades. Best on a 1m chart.")
 
 sym = useAlt ? altSym : syminfo.tickerid
 
@@ -134,3 +135,62 @@ if showTbl and barstate.islast
     table.cell(tbl, 1, 2, stateText(fast), text_color = color.white, bgcolor = stateColor(fast))
     table.cell(tbl, 0, 3, "Combined")
     table.cell(tbl, 1, 3, stateText(comb), text_color = color.white, bgcolor = stateColor(comb))
+
+// ---------- Trade P&L table (bottom left) ----------
+// Combined trades as in the trade logs: always in the market, every BUY / SELL reverses the
+// position, filled at the open of the candle after the signal.
+var int   trSide   = 0
+var float trEntry  = na
+var int   pendSide = 0
+var array<float> clPts = array.new<float>()
+var array<float> clRoi = array.new<float>()
+
+if pendSide != 0
+    if trSide != 0
+        float p = trSide * (open - trEntry)
+        array.push(clPts, p)
+        array.push(clRoi, p / trEntry * 100)
+        if array.size(clPts) > 5
+            array.shift(clPts)
+            array.shift(clRoi)
+    trSide := pendSide
+    trEntry := open
+    pendSide := 0
+if combBuy
+    pendSide := 1
+if combSell
+    pendSide := -1
+
+lastSum(array<float> a, int k) =>
+    int n = array.size(a)
+    int m = math.min(k, n)
+    float s = 0.0
+    if m > 0
+        for i = n - m to n - 1
+            s += array.get(a, i)
+    [s, m]
+
+pnlText(float v) => na(v) ? "-" : (v > 0 ? "+" : "") + str.tostring(v, "#,##0.00")
+pnlColor(float v) => na(v) or v == 0 ? color.gray : v > 0 ? color.teal : color.red
+
+var table pnl = table.new(position.bottom_left, 3, 4, border_width = 1)
+if showPnl and barstate.islast
+    float curPts = trSide != 0 ? trSide * (close - trEntry) : na
+    float curRoi = trSide != 0 ? curPts / trEntry * 100 : na
+    [p3, n3] = lastSum(clPts, 3)
+    [r3, k3] = lastSum(clRoi, 3)
+    [p5, n5] = lastSum(clPts, 5)
+    [r5, k5] = lastSum(clRoi, 5)
+    string sideTxt = trSide == 1 ? "LONG" : trSide == -1 ? "SHORT" : "-"
+    table.cell(pnl, 0, 0, "Rishi TK TF trades", text_color = color.white, bgcolor = color.purple)
+    table.cell(pnl, 1, 0, "Points", text_color = color.white, bgcolor = color.purple)
+    table.cell(pnl, 2, 0, "ROI %", text_color = color.white, bgcolor = color.purple)
+    table.cell(pnl, 0, 1, "Running " + sideTxt + (trSide != 0 ? " @ " + str.tostring(trEntry, "#,##0.00") : ""))
+    table.cell(pnl, 1, 1, pnlText(curPts), text_color = color.white, bgcolor = pnlColor(curPts))
+    table.cell(pnl, 2, 1, pnlText(curRoi), text_color = color.white, bgcolor = pnlColor(curRoi))
+    table.cell(pnl, 0, 2, "Last 3 closed trades" + (n3 < 3 ? " (" + str.tostring(n3) + ")" : ""))
+    table.cell(pnl, 1, 2, n3 > 0 ? pnlText(p3) : "-", text_color = color.white, bgcolor = n3 > 0 ? pnlColor(p3) : color.gray)
+    table.cell(pnl, 2, 2, n3 > 0 ? pnlText(r3) : "-", text_color = color.white, bgcolor = n3 > 0 ? pnlColor(r3) : color.gray)
+    table.cell(pnl, 0, 3, "Last 5 closed trades" + (n5 < 5 ? " (" + str.tostring(n5) + ")" : ""))
+    table.cell(pnl, 1, 3, n5 > 0 ? pnlText(p5) : "-", text_color = color.white, bgcolor = n5 > 0 ? pnlColor(p5) : color.gray)
+    table.cell(pnl, 2, 3, n5 > 0 ? pnlText(r5) : "-", text_color = color.white, bgcolor = n5 > 0 ? pnlColor(r5) : color.gray)
