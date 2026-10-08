@@ -157,40 +157,84 @@ alertcondition(slowSell, "Slow SELL", "Rishi TK TF: Slow SELL on {{ticker}} at {
 var int   trSide   = 0
 var float trEntry  = na
 var int   pendSide = 0
+var float runPeak  = 0.0   // best open points of the running trade so far
+var float runDD    = 0.0   // largest give-back from that best, in points (from entry if never in profit)
 var array<float> clPts = array.new<float>()
 var array<float> clRoi = array.new<float>()
+var array<int>   clT   = array.new<int>()   // exit time of each closed trade
 var line  entryLn  = na
+var int   firstT   = time
 
 if pendSide != 0
     if trSide != 0
         float p = trSide * (open - trEntry)
         array.push(clPts, p)
         array.push(clRoi, p / trEntry * 100)
-        if array.size(clPts) > 5
+        array.push(clT, time)
+        if array.size(clPts) > 3000
             array.shift(clPts)
             array.shift(clRoi)
+            array.shift(clT)
     trSide := pendSide
     trEntry := open
     pendSide := 0
+    runPeak := 0.0
+    runDD := 0.0
     if showEntry
         line.delete(entryLn)
         entryLn := line.new(bar_index, trEntry, bar_index + 1, trEntry, extend = extend.right, color = color.new(stateCol(trSide), 20), style = line.style_dashed, width = 1)
+if trSide != 0
+    float worstPts = trSide == 1 ? low - trEntry : trEntry - high
+    float bestPts  = trSide == 1 ? high - trEntry : trEntry - low
+    runDD := math.max(runDD, runPeak - worstPts)
+    runPeak := math.max(runPeak, bestPts)
 if combBuy
     pendSide := 1
 if combSell
     pendSide := -1
 
-lastSum(array<float> a, int k) =>
-    int n = array.size(a)
-    int m = math.min(k, n)
-    float s = 0.0
-    if m > 0
-        for i = n - m to n - 1
-            s += array.get(a, i)
-    [s, m]
+// Totals and max drawdown (peak to trough of the running total, starting at 0) over a run of
+// trades. Time windows use closed trades whose exit is inside the window plus the running trade.
+seqStats(int i0, bool addRunning, float curPts, float curRoi) =>
+    float cp = 0.0
+    float cr = 0.0
+    float pkP = 0.0
+    float pkR = 0.0
+    float ddP = 0.0
+    float ddR = 0.0
+    int n = 0
+    int sz = array.size(clPts)
+    if i0 < sz
+        for i = i0 to sz - 1
+            cp += array.get(clPts, i)
+            cr += array.get(clRoi, i)
+            pkP := math.max(pkP, cp)
+            pkR := math.max(pkR, cr)
+            ddP := math.max(ddP, pkP - cp)
+            ddR := math.max(ddR, pkR - cr)
+            n += 1
+    if addRunning and not na(curPts)
+        cp += curPts
+        cr += curRoi
+        ddP := math.max(ddP, pkP - cp)
+        ddR := math.max(ddR, pkR - cr)
+        n += 1
+    [cp, cr, ddP, ddR, n]
+
+firstIdxSince(int fromT) =>
+    int sz = array.size(clT)
+    int idx = sz
+    if sz > 0
+        for i = sz - 1 to 0
+            if array.get(clT, i) < fromT
+                break
+            idx := i
+    idx
 
 pnlText(float v) => na(v) ? "–" : (v > 0 ? "+" : "") + str.tostring(v, "#,##0.00")
 pnlCol(float v) => na(v) or v == 0 ? neutCol : v > 0 ? bullCol : bearCol
+ddText(float v) => na(v) ? "–" : v > 0 ? "-" + str.tostring(v, "#,##0.00") : "0.00"
+ddCol(float v) => na(v) or v <= 0 ? neutCol : color.new(bearCol, 15)
 
 // ---------- Table helpers ----------
 headCell(table t, int c, int r, string txt) =>
@@ -215,24 +259,37 @@ if showTbl and barstate.islast
     valueCell(tbl, 1, 4, lockChecks ? "09:45-15:15" : "Every candle", accentCol)
 
 // ---------- Trade P&L table (bottom left) ----------
-var table pnl = table.new(position.bottom_left, 3, 4, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
+var table pnl = table.new(position.bottom_left, 6, 8, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
+
+pnlRow(int r, string name, float pts, float roi, float ddP, float ddR, int n) =>
+    labelCell(pnl, 0, r, name)
+    valueCell(pnl, 1, r, str.tostring(n), accentCol)
+    valueCell(pnl, 2, r, n > 0 ? pnlText(pts) : "–", n > 0 ? pnlCol(pts) : neutCol)
+    valueCell(pnl, 3, r, n > 0 ? pnlText(roi) : "–", n > 0 ? pnlCol(roi) : neutCol)
+    valueCell(pnl, 4, r, n > 0 ? ddText(ddP) : "–", n > 0 ? ddCol(ddP) : neutCol)
+    valueCell(pnl, 5, r, n > 0 ? ddText(ddR) : "–", n > 0 ? ddCol(ddR) : neutCol)
+
 if showPnl and barstate.islast
     float curPts = trSide != 0 ? trSide * (close - trEntry) : na
     float curRoi = trSide != 0 ? curPts / trEntry * 100 : na
-    [p3, n3] = lastSum(clPts, 3)
-    [r3, k3] = lastSum(clRoi, 3)
-    [p5, n5] = lastSum(clPts, 5)
-    [r5, k5] = lastSum(clRoi, 5)
+    int   sz     = array.size(clPts)
     string sideTxt = trSide == 1 ? "▲ LONG" : trSide == -1 ? "▼ SHORT" : "–"
     headCell(pnl, 0, 0, "Rishi TK TF trades")
-    headCell(pnl, 1, 0, "Points")
-    headCell(pnl, 2, 0, "ROI %")
-    labelCell(pnl, 0, 1, "Running " + sideTxt + (trSide != 0 ? " @ " + str.tostring(trEntry, "#,##0.00") : ""))
-    valueCell(pnl, 1, 1, pnlText(curPts), pnlCol(curPts))
-    valueCell(pnl, 2, 1, pnlText(curRoi), pnlCol(curRoi))
-    labelCell(pnl, 0, 2, "Last 3 closed trades" + (n3 < 3 ? " (" + str.tostring(n3) + ")" : ""))
-    valueCell(pnl, 1, 2, n3 > 0 ? pnlText(p3) : "–", n3 > 0 ? pnlCol(p3) : neutCol)
-    valueCell(pnl, 2, 2, n3 > 0 ? pnlText(r3) : "–", n3 > 0 ? pnlCol(r3) : neutCol)
-    labelCell(pnl, 0, 3, "Last 5 closed trades" + (n5 < 5 ? " (" + str.tostring(n5) + ")" : ""))
-    valueCell(pnl, 1, 3, n5 > 0 ? pnlText(p5) : "–", n5 > 0 ? pnlCol(p5) : neutCol)
-    valueCell(pnl, 2, 3, n5 > 0 ? pnlText(r5) : "–", n5 > 0 ? pnlCol(r5) : neutCol)
+    headCell(pnl, 1, 0, "Trades")
+    headCell(pnl, 2, 0, "Points")
+    headCell(pnl, 3, 0, "ROI %")
+    headCell(pnl, 4, 0, "Max DD pts")
+    headCell(pnl, 5, 0, "Max DD %")
+    // Running trade: drawdown = largest give-back from its best point (or from entry)
+    pnlRow(1, "Running " + sideTxt + (trSide != 0 ? " @ " + str.tostring(trEntry, "#,##0.00") : ""), curPts, curRoi, trSide != 0 ? runDD : na, trSide != 0 ? runDD / trEntry * 100 : na, trSide != 0 ? 1 : 0)
+    [p3, r3, d3p, d3r, n3] = seqStats(math.max(sz - 3, 0), false, na, na)
+    pnlRow(2, "Last 3 closed trades", p3, r3, d3p, d3r, n3)
+    [p5, r5, d5p, d5r, n5] = seqStats(math.max(sz - 5, 0), false, na, na)
+    pnlRow(3, "Last 5 closed trades", p5, r5, d5p, d5r, n5)
+    string since = str.format_time(firstT, "dd MMM yyyy", "Asia/Kolkata")
+    for [k, days] in array.from(7, 30, 91, 365)
+        int fromT = time - days * 86400000
+        [wp, wr, wdp, wdr, wn] = seqStats(firstIdxSince(fromT), true, curPts, curRoi)
+        string nm = days == 7 ? "Week (7 days)" : days == 30 ? "Month (30 days)" : days == 91 ? "Quarter (91 days)" : "Year (365 days)"
+        pnlRow(4 + k, nm + (fromT < firstT ? " – since " + since : ""), wp, wr, wdp, wdr, wn)
+    table.cell_set_tooltip(pnl, 0, 0, "Rolling windows count closed trades that exited inside the window plus the running trade. Max DD = largest peak-to-trough fall of the running total (running trade: largest give-back from its best point). Windows longer than the chart's loaded history show 'since <date>'.")
