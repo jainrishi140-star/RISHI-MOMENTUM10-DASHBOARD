@@ -249,9 +249,9 @@ var table tbl = table.new(position.top_right, 2, 4, frame_color = accentCol, fra
 if showTbl and barstate.islast
     headCell(tbl, 0, 0, "ADC TF")
     headCell(tbl, 1, 0, syminfo.ticker)
-    labelCell(tbl, 0, 1, "Slow (" + slowTf + "m)")
+    labelCell(tbl, 0, 1, "Slow")
     valueCell(tbl, 1, 1, stateText(slow), stateCol(slow))
-    labelCell(tbl, 0, 2, "Fast (" + (fastLocked ? fastReqTf : timeframe.period) + "m)")
+    labelCell(tbl, 0, 2, "Fast")
     valueCell(tbl, 1, 2, stateText(fast), stateCol(fast))
     labelCell(tbl, 0, 3, "Combined")
     valueCell(tbl, 1, 3, stateText(comb), stateCol(comb))
