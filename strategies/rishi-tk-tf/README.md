@@ -203,6 +203,7 @@ python3 robustness_research.py <rishi_every_candle_trades.csv> --out robustness_
 | File | What it is |
 |------|------------|
 | `rishi_tk_tf.pine` | Rishi TK TF indicator for TradingView (shown on the chart as "ADC TF"): BUY/SELL labels, alerts, status table, and a bottom-left table with the running trade, the last 3 / last 5 closed trades and rolling week / month / quarter totals (trades, points, ROI %, max drawdown) |
+| `adc_tf_strategy.pine` | ADC TF backtester for TradingView: same signals and look as the indicator ("ADC TF"), 30-min checks or every candle, optional trend-gated shorts (Robust rule), results table, running / last 3 / last 5 / week / month / quarter P&L table |
 | `rishi_tk_tf_fixed_strategy.pine` | Simplest Rishi TK TF backtester for TradingView: fixed 09:45-15:15 checks built in, 1m chart only, for Deep Backtesting and trade-log export |
 | `rishi_tk_tf_strategy.pine` | Rishi TK TF backtester for TradingView (Deep Backtesting), with a results table next to the TK TF Original System's figures |
 | `rishi_tk_tf_robust_strategy.pine` | Rishi TK TF Robust: Every-Candle signals with trend-gated shorts, 1m chart only, table comparing it with plain Every-Candle |
