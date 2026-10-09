@@ -4,7 +4,7 @@
 
 import { repriceHoldings } from "./yahoo";
 import { fetchSheetRows, TABS } from "./sheet";
-import { computeLiveNav, parseHoldings, parseRealised, todayIST } from "./portfolio";
+import { computeLiveNav, fundedOvershoot, parseHoldings, parseRealised, todayIST } from "./portfolio";
 
 const REPO_RAW_BASE =
   "https://raw.githubusercontent.com/jainrishi140-star/RISHI-MOMENTUM10-DASHBOARD/main/data";
@@ -110,6 +110,8 @@ export async function fetchSiblingStrategies(
         const live = await repriceHoldings(parseHoldings(holdRows));
         if (live.rows.some((r) => !r.cmp)) throw new Error("unpriced holding -- skip live splice");
         const { nav } = computeLiveNav(live, realised);
+        const fund = fundedOvershoot(live, realised);
+        if (fund) series = series.map((p) => ({ ...p, value: p.value + fund }));
         const livePoint = { date: today, value: nav };
         if (series.length && series[series.length - 1].date === today) series = [...series.slice(0, -1), livePoint];
         else if (!series.length || today > series[series.length - 1].date) series = [...series, livePoint];

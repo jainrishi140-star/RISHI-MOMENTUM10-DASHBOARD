@@ -267,11 +267,13 @@ export interface NavPoint {
 // data/nav-history.json is appended to once a day by
 // .github/workflows/daily-nav-snapshot.yml, using only this repo's own
 // GitHub Actions token -- no Google auth involved at all.
-export function buildNavPoints(history: { date: string; nav: number }[]): NavPoint[] {
+export function buildNavPoints(history: { date: string; nav: number }[], fund = 0): NavPoint[] {
+  // fund = overshoot funded on top of START_CAPITAL (see fundedStart); the
+  // stored snapshots are on the plain START_CAPITAL basis, so shift them.
   return history
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .map((p) => ({ date: p.date, nav: p.nav, portfolioReturn: p.nav / START_CAPITAL - 1 }));
+    .map((p) => ({ date: p.date, nav: p.nav + fund, portfolioReturn: (p.nav + fund) / (START_CAPITAL + fund) - 1 }));
 }
 
 export interface DashboardData {
@@ -296,6 +298,16 @@ export interface DashboardData {
 // Cash = start - cost of what is held now + realised P&L: exits roll proceeds
 // (cost + booked gain) back into cash, so a book that has rebalanced holds
 // more/less cash than start - cost basis alone.
+// A sheet can buy slightly MORE than START_CAPITAL (each lot rounds up to whole
+// shares, e.g. MOM10 deploys Rs 1,00,05,108). Rather than show negative cash,
+// the overshoot is treated as funded capital: the book's starting capital is
+// START_CAPITAL + overshoot, so cash floors at 0 and returns are measured on
+// the capital actually deployed.
+export function fundedOvershoot(holdings: { total: HoldingRow | null }, realisedPnl = 0): number {
+  const cost = holdings.total ? toNumber(holdings.total.costBasis) : 0;
+  return Math.max(0, cost - realisedPnl - START_CAPITAL);
+}
+
 export function computeLiveNav(
   holdings: { rows: HoldingRow[]; total: HoldingRow | null },
   realisedPnl = 0
@@ -306,9 +318,10 @@ export function computeLiveNav(
   const total = holdings.total;
   const costBasis = total ? toNumber(total.costBasis) : 0;
   const currentValue = total ? toNumber(total.currentValue) : 0;
-  const cash = START_CAPITAL - costBasis + realisedPnl;
+  const start = START_CAPITAL + fundedOvershoot(holdings, realisedPnl);
+  const cash = start - costBasis + realisedPnl;
   const nav = cash + currentValue;
-  return { nav, portfolioReturn: nav / START_CAPITAL - 1 };
+  return { nav, portfolioReturn: nav / start - 1 };
 }
 
 // Today's date in IST as YYYY-MM-DD, matching the nav-history.json date format.
@@ -332,8 +345,9 @@ export function computeDashboard(
   const dayPnl = total ? toNumber(total.dayPnl) : 0;
 
   const { nav, portfolioReturn } = computeLiveNav(holdings, realisedPnl);
-  const cash = START_CAPITAL - costBasis + realisedPnl;
-  const totalPnl = nav - START_CAPITAL;
+  const start = START_CAPITAL + fundedOvershoot(holdings, realisedPnl);
+  const cash = start - costBasis + realisedPnl;
+  const totalPnl = nav - start;
 
   const weights = holdings.rows.map((h) => toFraction(h.actualWt)).filter((w) => w > 0);
   const sortedWeights = [...weights].sort((a, b) => b - a);
@@ -367,7 +381,7 @@ export function computeDashboard(
     portfolioReturn: formatPct(portfolioReturn),
     portfolioReturnRaw: portfolioReturn,
     capitalValue: [
-      { label: "Starting Capital", value: formatMoney(START_CAPITAL) },
+      { label: "Starting Capital", value: formatMoney(start) },
       { label: "Capital Deployed", value: formatMoney(costBasis) },
       { label: "Cash Balance", value: formatMoney(cash) },
       { label: "Current Market Value", value: formatMoney(currentValue) },

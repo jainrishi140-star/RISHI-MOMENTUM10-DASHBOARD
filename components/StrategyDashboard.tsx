@@ -20,6 +20,7 @@ import {
   dayPct,
   type RealisedRow,
   buildNavPoints,
+  fundedOvershoot,
   parseSheetDate,
   todayIST,
   KV,
@@ -120,7 +121,7 @@ export default async function StrategyDashboard({
   // Independent of the sheet fetch above -- a hiccup here shouldn't take
   // down the rest of the dashboard.
   try {
-    nav = buildNavPoints(await fetchNavHistory(navHistoryFile));
+    nav = buildNavPoints(await fetchNavHistory(navHistoryFile), holdings ? fundedOvershoot(holdings, realised.total) : 0);
     // A book that gets rebuilt (OVERWRITE = true) can leave behind daily
     // snapshots taken against an earlier draft of the sheet -- those predate
     // the current holdings' own Entry Date and would silently drag the
