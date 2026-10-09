@@ -3,15 +3,22 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-// Re-fetches the (server-rendered, no-store) dashboard on an interval so the
-// live-spliced equity curve point and hero tiles move intraday without the
-// user having to manually reload the tab.
-export default function AutoRefresh({ intervalMs = 15 * 60 * 1000 }: { intervalMs?: number }) {
+// Re-fetches the (server-rendered, no-store) dashboard every minute so Yahoo
+// prices, hero tiles and the live equity-curve point move without a manual
+// reload. Skips ticks while the tab is hidden and refreshes on return.
+export default function AutoRefresh({ intervalMs = 60 * 1000 }: { intervalMs?: number }) {
   const router = useRouter();
 
   useEffect(() => {
-    const id = setInterval(() => router.refresh(), intervalMs);
-    return () => clearInterval(id);
+    const tick = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    const id = setInterval(tick, intervalMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [router, intervalMs]);
 
   return null;
