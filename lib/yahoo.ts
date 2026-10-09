@@ -26,16 +26,23 @@ async function one(sym: string): Promise<Mkt | null> {
   for (const suf of [".NS", ".BO"]) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym + suf)}?range=1y&interval=1d`,
-          { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store" }
-        );
+        const get = (q: string) =>
+          fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym + suf)}?${q}`, {
+            headers: { "User-Agent": "Mozilla/5.0" },
+            cache: "no-store",
+          });
+        // 1y daily bars for the return windows + a 1d/1m call whose meta carries
+        // the true previous-session close (chartPreviousClose). The daily series
+        // alone is NOT safe for that: Yahoo sometimes drops a day's close (null),
+        // which made "yesterday" two sessions back and day P&L wrong.
+        const [res, intra] = await Promise.all([get("range=1y&interval=1d"), get("range=1d&interval=1m")]);
         if (res.status === 404) break; // not listed under this suffix
         if (!res.ok) { await new Promise((r) => setTimeout(r, 300 * (attempt + 1))); continue; }
+        const intraMeta = intra.ok ? (await intra.json()).chart?.result?.[0]?.meta : null;
         const r = (await res.json()).chart?.result?.[0];
         const ts: number[] = r?.timestamp ?? [];
         const cl: (number | null)[] = r?.indicators?.quote?.[0]?.close ?? [];
-        const last: number | undefined = r?.meta?.regularMarketPrice;
+        const last: number | undefined = intraMeta?.regularMarketPrice ?? r?.meta?.regularMarketPrice;
         if (!last || !ts.length) break;
         const latestDay = ist(r.meta.regularMarketTime ?? ts[ts.length - 1]);
         const bars = ts.map((t, i) => ({ d: ist(t), c: cl[i] })).filter((b): b is { d: string; c: number } => b.c != null);
@@ -50,7 +57,10 @@ async function one(sym: string): Promise<Mkt | null> {
         };
         return {
           last,
-          prev: prevBar?.c ?? r.meta.chartPreviousClose ?? last,
+          prev:
+            intraMeta?.chartPreviousClose && Math.abs(intraMeta.chartPreviousClose / last - 1) < 0.3
+              ? intraMeta.chartPreviousClose
+              : (prevBar?.c ?? last),
           hi52: Math.max(r.meta.fiftyTwoWeekHigh ?? 0, last),
           lo52: Math.min(r.meta.fiftyTwoWeekLow ?? Infinity, last),
           ret1m: back(1), ret3m: back(3), ret6m: back(6), ret12m: back(12),
