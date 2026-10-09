@@ -8,8 +8,11 @@
 //          the candle after the signal. Optional "Trend-gated shorts" (the Robust rule): a SELL is
 //          shorted only when price is at or below the 30-day average of the signal prices, otherwise
 //          the long is closed and the strategy stays flat until the next BUY.
-// Use on a 1-minute NSE:NIFTY chart with Deep Backtesting. 1 crore x size multiplier per trade, so
-// with multiplier 1 the Strategy Tester net profit / 1,00,000 = total ROI %.
+// Use on a 1-minute NSE:NIFTY chart with Deep Backtesting. Starting capital 1 crore.
+//   Compounding on (default): each trade uses the whole current equity x size multiplier, so the
+//   Strategy Tester's net profit % is the compounded return.
+//   Compounding off: each trade is a fixed 1 crore x size multiplier, so net profit / 1,00,000 =
+//   total (non-compounded) ROI %.
 strategy("ADC TF Backtester", shorttitle = "ADC TF BT", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0, max_labels_count = 500, max_lines_count = 50)
 
 grpS = "Signal source"
@@ -26,7 +29,8 @@ fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Time
 grpB = "Backtest"
 fromTime = input.time(timestamp("03 Feb 2009 00:00 +0530"), "Backtest from", group = grpB)
 toTime   = input.time(timestamp("31 Dec 2099 00:00 +0530"), "Backtest to", group = grpB)
-sizeMult = input.float(1.0, "Position size multiplier", minval = 0.1, maxval = 5.0, step = 0.05, group = grpB, tooltip = "1 = 1 crore per trade.")
+compound = input.bool(true, "Compounding (reinvest profits)", group = grpB, tooltip = "On: every trade uses the whole current equity (x size multiplier), so the Strategy Tester shows the compounded return. Off: every trade is a fixed 1 crore (x size multiplier).")
+sizeMult = input.float(1.0, "Position size multiplier", minval = 0.1, maxval = 5.0, step = 0.05, group = grpB, tooltip = "1 = 100% of equity (compounding on) or 1 crore (compounding off) per trade.")
 costPct  = input.float(0.0, "Cost per side for the tables (%)", minval = 0.0, step = 0.01, group = grpB, tooltip = "Used by the results and P&L tables. For the Strategy Tester set the same value as Commission in the strategy Properties.")
 gateOn   = input.bool(false, "Trend-gated shorts (Robust rule)", group = grpB, tooltip = "On: a SELL is shorted only when price is at or below the trend average of the signal prices; above it the long is closed and the strategy stays flat until the next BUY.")
 gateDays = input.int(30, "Trend average length (calendar days)", minval = 5, maxval = 365, group = grpB)
@@ -155,7 +159,7 @@ bool gated = gateOn and combSell and not na(trendAvg) and close > trendAvg
 
 // ---------- Orders ----------
 bool  inRange = time >= fromTime and time <= toTime
-float qty     = sizeMult * 10000000 / close
+float qty     = sizeMult * (compound ? strategy.equity : 10000000) / close
 if inRange and combBuy
     strategy.entry("Long", strategy.long, qty = qty)
 if inRange and combSell
@@ -256,6 +260,9 @@ var line  entryLn  = na
 var int   firstT   = na
 var int   lastT    = na
 var int   chartT0  = time
+var float bhStart  = na      // buy & hold: price at the first fill
+var float bhPeak   = na
+var float bhDD     = 0.0
 
 if pendAct != 0
     if trSide != 0
@@ -272,6 +279,8 @@ if pendAct != 0
         lastT := time
     if na(firstT)
         firstT := time
+        bhStart := open
+        bhPeak := open
     trSide := pendAct == 2 ? 0 : pendAct
     trEntry := open
     trSize := sizeMult
@@ -281,6 +290,9 @@ if pendAct != 0
     line.delete(entryLn)
     if showEntry and trSide != 0
         entryLn := line.new(bar_index, trEntry, bar_index + 1, trEntry, extend = extend.right, color = color.new(stateCol(trSide), 20), style = line.style_dashed, width = 1)
+if not na(bhStart)
+    bhDD := math.max(bhDD, (bhPeak - low) / bhPeak * 100)
+    bhPeak := math.max(bhPeak, high)
 if trSide != 0
     float worstPts = trSide == 1 ? low - trEntry : trEntry - high
     float bestPts  = trSide == 1 ? high - trEntry : trEntry - low
@@ -389,7 +401,7 @@ if showPnl and barstate.islast
         pnlRow(4 + k, nm + (fromT < chartT0 ? " – since " + since : ""), wp, wr, wdp, wdr, wn)
 
 // ---------- Backtest results table (bottom right) ----------
-var table res = table.new(position.bottom_right, 2, 15, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
+var table res = table.new(position.bottom_right, 2, 19, frame_color = accentCol, frame_width = 2, border_color = color.new(accentCol, 60), border_width = 1)
 
 resRow(int r, string name, string val, color bg) =>
     labelCell(res, 0, r, name)
@@ -418,3 +430,10 @@ if showRes and barstate.islast
     resRow(12, "Long ROI % / Short ROI %", fmtv(st.sumL, "#,##0.00") + " / " + fmtv(st.sumS, "#,##0.00"), accentCol)
     resRow(13, "Best / worst trade %", fmtv(st.best, "#.##") + " / " + fmtv(st.worst, "#.##"), accentCol)
     resRow(14, "Longest losing streak", str.tostring(st.maxLose) + " trades", accentCol)
+    float bhYears = na(firstT) ? na : (time - firstT) / (365.25 * 86400000.0)
+    float bhRet   = na(bhStart) ? na : (close / bhStart - 1) * 100
+    float bhCagr  = na(bhYears) or bhYears <= 0 ? na : (math.pow(close / bhStart, 1 / bhYears) - 1) * 100
+    resRow(15, "Strategy compounded return %", fmtv(st.n > 0 ? (st.eq - 1) * 100 : na, "#,##0.00"), pnlCol(st.eq - 1))
+    resRow(16, "Buy & hold return %", fmtv(bhRet, "#,##0.00"), pnlCol(bhRet))
+    resRow(17, "Buy & hold CAGR %", fmtv(bhCagr, "#,##0.00"), pnlCol(bhCagr))
+    resRow(18, "Buy & hold max drawdown %", na(bhStart) ? "–" : ddText(bhDD), ddCol(bhDD))
