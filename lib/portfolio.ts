@@ -227,12 +227,14 @@ export interface RebalanceRow {
   estTradeValue: string;
 }
 
-export function parseRebalance(rows: string[][]): { nextDate: string; rows: RebalanceRow[] } {
+export function parseRebalance(rows: string[][]): { nextDate: string; base: number; band: number; rows: RebalanceRow[] } {
   // "Next rebalance (Wed)" label sits two rows above the "Ticker" header --
   // "Slot" on the RISHI x VIRAJ sheet, whose header is protected under that
   // label since one slot is a cash sleeve, not a real ticker.
   const labelIdx = rows.findIndex((r) => (r[0] ?? "").trim().startsWith("Next rebalance"));
   const nextDate = labelIdx >= 0 ? cell(rows, labelIdx, 1) : "";
+  const base = labelIdx >= 0 ? toNumber(cell(rows, labelIdx, 4)) : 0;
+  const band = labelIdx >= 0 && cell(rows, labelIdx, 7) ? toFraction(cell(rows, labelIdx, 7)) : 0.2;
   const headerIdx = findRow(rows, ["Ticker", "Slot"]);
   const out: RebalanceRow[] = [];
   for (let r = headerIdx + 1; r < rows.length; r++) {
@@ -250,7 +252,7 @@ export function parseRebalance(rows: string[][]): { nextDate: string; rows: Reba
       estTradeValue: cell(rows, r, 8),
     });
   }
-  return { nextDate, rows: out };
+  return { nextDate, base, band, rows: out };
 }
 
 export interface NavPoint {

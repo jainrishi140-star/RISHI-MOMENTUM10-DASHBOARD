@@ -107,7 +107,9 @@ export async function fetchSiblingStrategies(
         try {
           realised = parseRealised(await fetchSheetRows(d.sheetId, d.realisedTab ?? "Realised")).total;
         } catch {}
-        const { nav } = computeLiveNav(await repriceHoldings(parseHoldings(holdRows)), realised);
+        const live = await repriceHoldings(parseHoldings(holdRows));
+        if (live.rows.some((r) => !r.cmp)) throw new Error("unpriced holding -- skip live splice");
+        const { nav } = computeLiveNav(live, realised);
         const livePoint = { date: today, value: nav };
         if (series.length && series[series.length - 1].date === today) series = [...series.slice(0, -1), livePoint];
         else if (!series.length || today > series[series.length - 1].date) series = [...series, livePoint];

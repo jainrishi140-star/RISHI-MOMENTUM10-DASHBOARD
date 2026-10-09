@@ -1,5 +1,4 @@
-// Appends today's NAV to each strategy's data/nav-history-*.json, computed
-// from that sheet's Holdings tab -- the same way lib/portfolio.ts does it.
+// Appends today's NAV to each strategy's data/nav-history-*.json, computed from that sheet's Holdings (shares/cost) x Yahoo Finance prices.
 // Run daily by .github/workflows/daily-nav-snapshot.yml (no Google Apps
 // Script dependency, no Google account permissions needed).
 
@@ -60,18 +59,37 @@ function toNumber(s) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Prices come from Yahoo Finance (NSE .NS, .BO fallback) -- NOT the sheet's
+// GOOGLEFINANCE CMP. The sheet only supplies shares and cost basis.
+async function yahooLast(sym) {
+  for (const suf of [".NS", ".BO"]) {
+    for (let a = 0; a < 3; a++) {
+      try {
+        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}${suf}?range=5d&interval=1d`, { headers: { "User-Agent": "Mozilla/5.0" } });
+        if (res.status === 404) break;
+        if (!res.ok) { await new Promise((r) => setTimeout(r, 500 * (a + 1))); continue; }
+        const px = (await res.json()).chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (px > 0) return px;
+        break;
+      } catch { await new Promise((r) => setTimeout(r, 500 * (a + 1))); }
+    }
+  }
+  throw new Error(`No Yahoo price for ${sym}`);
+}
+
 async function fetchHoldingsTotal(sheetId) {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Holdings`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Holdings fetch failed: HTTP ${res.status}`);
   const rows = parseCsv(await res.text());
   const headerIdx = rows.findIndex((r) => (r[0] ?? "").trim() === "Ticker");
-  const totalRow = rows.slice(headerIdx + 1).find((r) => (r[0] ?? "").trim().toUpperCase() === "TOTAL");
-  if (!totalRow) throw new Error("Could not find TOTAL row in Holdings");
-  return {
-    costBasis: toNumber(totalRow[5]),
-    currentValue: toNumber(totalRow[7]),
-  };
+  const lots = rows.slice(headerIdx + 1).filter((r) => (r[0] ?? "").trim() && (r[0] ?? "").trim().toUpperCase() !== "TOTAL");
+  let costBasis = 0, currentValue = 0;
+  for (const r of lots) {
+    costBasis += toNumber(r[5]);
+    currentValue += toNumber(r[4]) * (await yahooLast(r[0].trim().replace(/^NSE:|^BOM:|^BSE:/, "")));
+  }
+  return { costBasis, currentValue };
 }
 
 // Booked P&L from the optional "Realised" tab (0 if the sheet has none --

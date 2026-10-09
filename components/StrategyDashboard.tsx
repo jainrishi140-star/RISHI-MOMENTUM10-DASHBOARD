@@ -9,7 +9,7 @@ import {
   type SiblingStrategyDef,
 } from "@/lib/benchmarks";
 import Nav from "@/components/Nav";
-import { repriceHoldings } from "@/lib/yahoo";
+import { fetchMarket, repriceHoldings, repriceMomentum, repriceRebalance } from "@/lib/yahoo";
 import { fetchSheetRows, fetchNavHistory, TABS, isNegative } from "@/lib/sheet";
 import {
   computeDashboard,
@@ -98,9 +98,14 @@ export default async function StrategyDashboard({
       fetchSheetRows(sheetId, TABS.momentum),
       fetchSheetRows(sheetId, TABS.rebalance),
     ]);
-    holdings = await repriceHoldings(parseHoldings(holdRows));
-    momentum = parseMomentum(momRows);
-    rebalance = parseRebalance(rebalRows);
+    const rawHoldings = parseHoldings(holdRows);
+    const rawMomentum = parseMomentum(momRows);
+    const rawRebalance = parseRebalance(rebalRows);
+    // Every price below comes from Yahoo Finance only (see lib/yahoo.ts).
+    const mkt = await fetchMarket([...rawHoldings.rows, ...rawMomentum, ...rawRebalance.rows].map((r) => r.ticker));
+    holdings = await repriceHoldings(rawHoldings, mkt);
+    momentum = repriceMomentum(rawMomentum, mkt);
+    rebalance = repriceRebalance(rawRebalance, holdings, mkt);
     try {
       realised = parseRealised(await fetchSheetRows(sheetId, realisedTab ?? "Realised"));
     } catch {
