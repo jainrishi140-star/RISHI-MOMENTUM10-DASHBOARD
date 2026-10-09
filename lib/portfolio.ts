@@ -391,7 +391,7 @@ export function computeDashboard(
       { label: "Next Rebalance (Wed)", value: rebalance.nextDate || "—" },
     ],
     attention: [
-      { label: "No price from GOOGLEFINANCE", value: attentionNoPrice.join(", ") || "None" },
+      { label: "No price from Yahoo Finance", value: attentionNoPrice.join(", ") || "None" },
       { label: `Overweight (> ${(overweightThreshold * 100).toFixed(0)}%)`, value: attentionOverweight.join(", ") || "None" },
       { label: "Momentum WEAK", value: attentionWeak.join(", ") || "None" },
     ],

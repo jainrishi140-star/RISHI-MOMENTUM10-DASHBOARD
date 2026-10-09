@@ -188,7 +188,7 @@ export default async function StrategyDashboard({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
             </span>
-            Live · reads the Google Sheet on every load
+            Live · prices from Yahoo Finance on every load
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">{title}</h1>
           <p className="mt-1.5 max-w-xl text-sm text-zinc-500 dark:text-zinc-400">{subtitle}</p>
@@ -510,7 +510,7 @@ export default async function StrategyDashboard({
         <p className="mt-10 text-xs text-zinc-400 dark:text-zinc-600">
           Data: read live from the Google Sheet on every page load (CSV export, no auth, no
           cache) — edit the sheet after each rebalance and this page reflects it on the next
-          visit. Prices in the sheet are GOOGLEFINANCE (NSE, ~20 min delayed). This is a forward
+          visit. Prices are from Yahoo Finance (NSE, may be slightly delayed). This is a forward
           test for research purposes, not investment advice, and does not place any trades.
         </p>
       </main>
