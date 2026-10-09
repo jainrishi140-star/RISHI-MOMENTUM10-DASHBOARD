@@ -15,11 +15,16 @@ async function quote(sym: string): Promise<Quote | null> {
       );
       if (!res.ok) continue;
       const r = (await res.json()).chart?.result?.[0];
-      const closes: number[] = (r?.indicators?.quote?.[0]?.close ?? []).filter((c: number | null) => c != null);
-      const last = r?.meta?.regularMarketPrice ?? closes.at(-1);
+      const ts: number[] = r?.timestamp ?? [];
+      const cl: (number | null)[] = r?.indicators?.quote?.[0]?.close ?? [];
+      const ist = (t: number) => new Date(t * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      const last = r?.meta?.regularMarketPrice ?? [...cl].reverse().find((c) => c != null);
       if (!last) continue;
-      // previous close = last daily close that is not today's bar
-      const prev = closes.length >= 2 ? closes[closes.length - 2] : (r?.meta?.chartPreviousClose ?? last);
+      // previous close = last daily close dated BEFORE the latest trading day
+      // (right even before the open, when the newest bar is still yesterday's)
+      const latestDay = ist(r?.meta?.regularMarketTime ?? ts.at(-1) ?? 0);
+      let prev = r?.meta?.chartPreviousClose ?? last;
+      for (let i = ts.length - 1; i >= 0; i--) if (cl[i] != null && ist(ts[i]) < latestDay) { prev = cl[i] as number; break; }
       return { last, prev };
     } catch {
       /* try next suffix */
