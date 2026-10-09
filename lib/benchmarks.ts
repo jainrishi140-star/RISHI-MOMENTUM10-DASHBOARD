@@ -2,6 +2,7 @@
 // own start date. Raw levels/NAVs live in data/benchmarks.json, refreshed by
 // scripts/snapshot-benchmarks.mjs (daily GitHub Action).
 
+import { repriceHoldings } from "./yahoo";
 import { fetchSheetRows, TABS } from "./sheet";
 import { computeLiveNav, parseHoldings, parseRealised, todayIST } from "./portfolio";
 
@@ -106,7 +107,7 @@ export async function fetchSiblingStrategies(
         try {
           realised = parseRealised(await fetchSheetRows(d.sheetId, d.realisedTab ?? "Realised")).total;
         } catch {}
-        const { nav } = computeLiveNav(parseHoldings(holdRows), realised);
+        const { nav } = computeLiveNav(await repriceHoldings(parseHoldings(holdRows)), realised);
         const livePoint = { date: today, value: nav };
         if (series.length && series[series.length - 1].date === today) series = [...series.slice(0, -1), livePoint];
         else if (!series.length || today > series[series.length - 1].date) series = [...series, livePoint];

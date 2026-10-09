@@ -9,6 +9,7 @@ import {
   type SiblingStrategyDef,
 } from "@/lib/benchmarks";
 import Nav from "@/components/Nav";
+import { repriceHoldings } from "@/lib/yahoo";
 import { fetchSheetRows, fetchNavHistory, TABS, isNegative } from "@/lib/sheet";
 import {
   computeDashboard,
@@ -97,7 +98,7 @@ export default async function StrategyDashboard({
       fetchSheetRows(sheetId, TABS.momentum),
       fetchSheetRows(sheetId, TABS.rebalance),
     ]);
-    holdings = parseHoldings(holdRows);
+    holdings = await repriceHoldings(parseHoldings(holdRows));
     momentum = parseMomentum(momRows);
     rebalance = parseRebalance(rebalRows);
     try {
