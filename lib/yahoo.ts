@@ -5,6 +5,7 @@
 // GOOGLEFINANCE numbers -- a ticker Yahoo can't price is left blank and is
 // listed under "No price from Yahoo Finance".
 
+import { parseSheetDate, todayIST } from "./portfolio";
 import type { HoldingRow, MomentumRow, RebalanceRow } from "./portfolio";
 
 export interface Mkt {
@@ -92,17 +93,21 @@ export async function repriceHoldings(
   mkt?: MktMap
 ): Promise<{ rows: HoldingRow[]; total: HoldingRow | null }> {
   const m = mkt ?? (await fetchMarket(h.rows.map((r) => r.ticker)));
+  const todayIst = todayIST();
   const priced = h.rows.map((r) => {
     const q = m.get(bare(r.ticker));
     if (!q) return { ...r, cmp: "", currentValue: "", unrealisedPnl: "", pnlPct: "", dayPnl: "", high52w: "", pctFrom52wHigh: "" };
     const shares = num(r.shares), cost = num(r.costBasis), value = shares * q.last;
+    // A lot bought today only earned (last - entry price) today, not (last - yesterday's close).
+    const boughtToday = parseSheetDate(r.entryDate) === todayIst;
+    const prev = boughtToday && num(r.entryPrice) > 0 ? num(r.entryPrice) : q.prev;
     return {
       ...r,
       cmp: inr(q.last),
       currentValue: inr(value, 0),
       unrealisedPnl: inr(value - cost, 0),
       pnlPct: pct(cost > 0 ? (value - cost) / cost : 0),
-      dayPnl: inr(shares * (q.last - q.prev), 0),
+      dayPnl: inr(shares * (q.last - prev), 0),
       high52w: inr(q.hi52),
       pctFrom52wHigh: pct(q.last / q.hi52 - 1, 1),
     };
