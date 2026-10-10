@@ -14,11 +14,11 @@ def build(stp=30, stm=3.0, ema_n=100, es=600, ee=870):
     t_ok = (f["smin"] >= es) & (f["emin"] <= ee); o_ok = (f["smin"] >= 570) & (f["emin"] <= 870)
     return st, L, Sx, oL, oS, t_ok, o_ok, np.nan_to_num(H - L_)
 
-def run(use_t=True, use_o=True, cost=2.0, **kw):
+def run(use_t=True, use_o=True, cost=2.0, fill=None, **kw):
     st, L, Sx, oL, oS, t_ok, o_ok, w = build(**kw)
     eod = f["emin"] >= 915
     return J.joint(f["o"], f["h"], f["l"], c, f["day"], eod, t_ok, L, Sx, st == -1, st == 1, o_ok, oL, oS,
-                   f["atr14"], w, 1.5, 4.0, 1.5, 3.0, cost, use_t, use_o, 2)
+                   f["atr14"], w, 1.5, 4.0, 1.5, 3.0, cost, use_t, use_o, 2, c if fill is None else fill)
 
 def stats(res, label):
     ei, xi, dr, md, p = res

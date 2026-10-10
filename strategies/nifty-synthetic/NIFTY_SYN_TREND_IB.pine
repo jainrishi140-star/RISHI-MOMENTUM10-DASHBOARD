@@ -20,6 +20,9 @@
 //      2062 trades | +19,421 pts | PF 1.50 | Sharpe 1.83 | Max DD 863 pts | every year positive
 //      Out-of-sample 2024-01 -> 2025-07 Sharpe 2.33
 //  Full-history results in TradingView need "Deep Backtesting" (15m charts load limited bars).
+//  Sizing is point-value aware: Strategy Tester qty = units / syminfo.pointvalue. On a symbol with
+//  point value != 1 (e.g. NSE:NIFTY1!) also set Properties -> Commission to <point value> INR per contract.
+//  The dashboard (points and ₹) is computed from prices and is correct on any symbol.
 // ============================================================================
 strategy("NIFTY SYN - Trend + IB Breakout (15m) Backtester", shorttitle = "NIFTY SYN BT", overlay = true,
      pyramiding = 2, process_orders_on_close = true, calc_on_every_tick = false, calc_on_order_fills = false,
@@ -34,6 +37,9 @@ btStart  = input.time(timestamp("01 Jan 2015 00:00 +0530"), "Start date", group 
 btEnd    = input.time(timestamp("31 Dec 2099 00:00 +0530"), "End date", group = grpR)
 dirMode  = input.string("Both", "Directions", options = ["Both", "Long only", "Short only"], group = grpR)
 showDash = input.bool(true, "Show performance dashboard", group = grpR)
+showYear = input.bool(true, "Show year-by-year table", group = grpR)
+costPts  = input.float(2.0, "Dashboard cost per round trip (index pts)", step = 0.5, group = grpR,
+     tooltip = "Dashboard P&L = (exit - entry) x direction - this cost, per unit. Independent of symbol point value and of the Properties commission.")
 
 grpG = "General"
 lotSize       = input.int(65, "Lot size (units)", minval = 1, group = grpG, tooltip = "NIFTY lot: 75 until Dec-2025, 65 after")
@@ -63,7 +69,8 @@ bSlAtr    = input.float(1.5, "Stop loss (x ATR)", step = 0.1, group = grpB)
 bTpIB     = input.float(3.0, "Take profit (x IB width)", step = 0.1, group = grpB)
 bMaxDay   = input.int(2, "Max IB entries per day", group = grpB)
 
-qty    = lotSize * lotsPerModule
+units  = lotSize * lotsPerModule                 // real units per module (65 = 1 NIFTY lot)
+qty    = units / syminfo.pointvalue              // contracts for the Strategy Tester (NSE:NIFTY pv=1 -> 65; pv=50 -> 1.3)
 allowL = dirMode != "Short only"
 allowS = dirMode != "Long only"
 
@@ -204,7 +211,8 @@ else
                      comment_loss = "IB SL", comment_profit = "IB TP",
                      alert_message = "NIFTY SYN EXIT SHORT (IB): BUY CE + SELL PE")
 
-// ============================================================================ PER-MODULE STATS (points per unit, net of costs)
+// ============================================================================ STATS (index points per unit, net of costPts)
+// Computed from entry/exit prices, so they do not depend on point value or commission settings.
 var int   tN  = 0
 var int   tW  = 0
 var float tP  = 0.0
@@ -216,11 +224,18 @@ var float bP  = 0.0
 var float bGP = 0.0
 var float bGL = 0.0
 var int   seen = 0
+var float closedPts = 0.0
+var yrTrades = array.new_int(40, 0)
+var yrPts    = array.new_float(40, 0.0)
+var yrPeak   = array.new_float(40, 0.0)
+var yrDD     = array.new_float(40, 0.0)
+var yrEq     = array.new_float(40, 0.0)
 if strategy.closedtrades > seen
     for i = seen to strategy.closedtrades - 1
-        string id = strategy.closedtrades.entry_id(i)
-        float  q  = math.abs(strategy.closedtrades.size(i))
-        float  p  = q > 0 ? strategy.closedtrades.profit(i) / q : 0.0
+        string id  = strategy.closedtrades.entry_id(i)
+        float  dir = strategy.closedtrades.size(i) > 0 ? 1.0 : -1.0
+        float  p   = dir * (strategy.closedtrades.exit_price(i) - strategy.closedtrades.entry_price(i)) - costPts
+        closedPts += p
         if str.startswith(id, "T")
             tN  += 1
             tW  += p > 0 ? 1 : 0
@@ -233,7 +248,22 @@ if strategy.closedtrades > seen
             bP  += p
             bGP += math.max(p, 0.0)
             bGL += math.max(-p, 0.0)
+        int yi = math.max(0, math.min(39, year(strategy.closedtrades.exit_time(i), tz) - 2010))
+        array.set(yrTrades, yi, array.get(yrTrades, yi) + 1)
+        array.set(yrPts, yi, array.get(yrPts, yi) + p)
+        float e = array.get(yrEq, yi) + p
+        array.set(yrEq, yi, e)
+        array.set(yrPeak, yi, math.max(array.get(yrPeak, yi), e))
+        array.set(yrDD, yi, math.max(array.get(yrDD, yi), array.get(yrPeak, yi) - e))
     seen := strategy.closedtrades
+
+// mark-to-market equity in points (closed net + open P&L at bar close) -> max drawdown in points
+openPts = strategy.position_size != 0 ? strategy.openprofit / (syminfo.pointvalue * qty) : 0.0
+eqPts   = closedPts + openPts
+var float peakPts  = 0.0
+var float maxDDPts = 0.0
+peakPts  := math.max(peakPts, eqPts)
+maxDDPts := math.max(maxDDPts, peakPts - eqPts)
 
 // ============================================================================ VISUALS
 plot(stLine, "Supertrend", color = stUp ? color.teal : color.red, linewidth = 2, style = plot.style_linebr)
@@ -246,9 +276,10 @@ plotshape(useTrend and tSfresh and tWindow, "Trend short setup", shape.triangled
 
 // ============================================================================ DASHBOARD
 var table dash = table.new(position.bottom_right, 6, 9, bgcolor = color.new(color.black, 15), border_color = color.gray, border_width = 1)
+var table ytab = table.new(position.top_right, 4, 42, bgcolor = color.new(color.black, 15), border_color = color.gray, border_width = 1)
 
-cell(int c, int r, string txt, color col) =>
-    table.cell(dash, c, r, txt, text_color = col, text_size = size.small)
+cell(table t, int c, int r, string txt, color col) =>
+    table.cell(t, c, r, txt, text_color = col, text_size = size.small)
 
 pfStr(float gp, float gl) =>
     gl > 0 ? str.tostring(gp / gl, "0.00") : "-"
@@ -256,39 +287,63 @@ pfStr(float gp, float gl) =>
 winStr(int w, int n) =>
     n > 0 ? str.tostring(100.0 * w / n, "0.0") + "%" : "-"
 
+pnlCol(float v) =>
+    v >= 0 ? color.lime : color.red
+
 statRow(int r, string name, int n, int w, float gp, float gl, float pts) =>
-    cell(0, r, name, color.white)
-    cell(1, r, str.tostring(n), color.white)
-    cell(2, r, winStr(w, n), color.white)
-    cell(3, r, pfStr(gp, gl), color.white)
-    cell(4, r, str.tostring(pts, "#,##0"), pts >= 0 ? color.lime : color.red)
-    cell(5, r, str.tostring(pts * qty, "#,##0"), pts >= 0 ? color.lime : color.red)
+    cell(dash, 0, r, name, color.white)
+    cell(dash, 1, r, str.tostring(n), color.white)
+    cell(dash, 2, r, winStr(w, n), color.white)
+    cell(dash, 3, r, pfStr(gp, gl), color.white)
+    cell(dash, 4, r, str.tostring(pts, "#,##0"), pnlCol(pts))
+    cell(dash, 5, r, str.tostring(pts * units, "#,##0"), pnlCol(pts))
 
 if showDash and barstate.islast
-    cell(0, 0, "Module", color.yellow)
-    cell(1, 0, "Trades", color.yellow)
-    cell(2, 0, "Win%", color.yellow)
-    cell(3, 0, "PF", color.yellow)
-    cell(4, 0, "Net pts", color.yellow)
-    cell(5, 0, "Net ₹ (" + str.tostring(qty) + "/lot)", color.yellow)
+    cell(dash, 0, 0, "Module", color.yellow)
+    cell(dash, 1, 0, "Trades", color.yellow)
+    cell(dash, 2, 0, "Win%", color.yellow)
+    cell(dash, 3, 0, "PF", color.yellow)
+    cell(dash, 4, 0, "Net pts", color.yellow)
+    cell(dash, 5, 0, "Net ₹ (" + str.tostring(units) + " units)", color.yellow)
     statRow(1, "A Trend", tN, tW, tGP, tGL, tP)
     statRow(2, "B IB", bN, bW, bGP, bGL, bP)
     statRow(3, "TOTAL", tN + bN, tW + bW, tGP + bGP, tGL + bGL, tP + bP)
-    cell(0, 4, "Max DD ₹", color.white)
-    cell(1, 4, str.tostring(strategy.max_drawdown, "#,##0"), color.orange)
-    cell(2, 4, "Net ₹", color.white)
-    cell(3, 4, str.tostring(strategy.netprofit, "#,##0"), strategy.netprofit >= 0 ? color.lime : color.red)
-    cell(4, 4, "Open P&L ₹", color.white)
-    cell(5, 4, str.tostring(strategy.openprofit, "#,##0"), color.white)
-    cell(0, 5, "60m bias", color.white)
-    cell(1, 5, htfDir == 1 ? "BULL" : "BEAR", htfDir == 1 ? color.lime : color.red)
-    cell(2, 5, "Daily bias", color.white)
-    cell(3, 5, dBull ? "BULL" : dBear ? "BEAR" : "-", dBull ? color.lime : color.red)
-    cell(4, 5, "Timeframe", color.white)
-    cell(5, 5, timeframe.period == "15" ? "15m OK" : "USE 15m!", timeframe.period == "15" ? color.lime : color.yellow)
-    cell(0, 6, "Trend lot", color.white)
-    cell(1, 6, tDir == 1 ? "LONG" : tDir == -1 ? "SHORT" : "flat", color.white)
-    cell(2, 6, "IB lot", color.white)
-    cell(3, 6, bDir == 1 ? "LONG" : bDir == -1 ? "SHORT" : "flat", color.white)
-    cell(4, 6, "IB range", color.white)
-    cell(5, 6, ibReady ? str.tostring(ibL, "#") + " - " + str.tostring(ibH, "#") : "building", color.white)
+    cell(dash, 0, 4, "Max DD pts", color.white)
+    cell(dash, 1, 4, str.tostring(maxDDPts, "#,##0"), color.orange)
+    cell(dash, 2, 4, "Max DD ₹", color.white)
+    cell(dash, 3, 4, str.tostring(maxDDPts * units, "#,##0"), color.orange)
+    cell(dash, 4, 4, "DD % of capital", color.white)
+    cell(dash, 5, 4, str.tostring(100 * maxDDPts * units / strategy.initial_capital, "0.0") + "%", color.orange)
+    cell(dash, 0, 5, "60m bias", color.white)
+    cell(dash, 1, 5, htfDir == 1 ? "BULL" : "BEAR", htfDir == 1 ? color.lime : color.red)
+    cell(dash, 2, 5, "Daily bias", color.white)
+    cell(dash, 3, 5, dBull ? "BULL" : dBear ? "BEAR" : "-", dBull ? color.lime : color.red)
+    cell(dash, 4, 5, "Timeframe", color.white)
+    cell(dash, 5, 5, timeframe.period == "15" ? "15m OK" : "USE 15m!", timeframe.period == "15" ? color.lime : color.yellow)
+    cell(dash, 0, 6, "Trend lot", color.white)
+    cell(dash, 1, 6, tDir == 1 ? "LONG" : tDir == -1 ? "SHORT" : "flat", color.white)
+    cell(dash, 2, 6, "IB lot", color.white)
+    cell(dash, 3, 6, bDir == 1 ? "LONG" : bDir == -1 ? "SHORT" : "flat", color.white)
+    cell(dash, 4, 6, "IB range", color.white)
+    cell(dash, 5, 6, ibReady ? str.tostring(ibL, "#") + " - " + str.tostring(ibH, "#") : "building", color.white)
+    cell(dash, 0, 7, "Point value", color.white)
+    cell(dash, 1, 7, str.tostring(syminfo.pointvalue), color.white)
+    cell(dash, 2, 7, "Qty/module", color.white)
+    cell(dash, 3, 7, str.tostring(qty, "#.##") + " ctr", color.white)
+    cell(dash, 4, 7, "Tester commission", color.white)
+    cell(dash, 5, 7, syminfo.pointvalue == 1 ? "OK (1/unit/side)" : "SET " + str.tostring(syminfo.pointvalue) + " INR/contract", syminfo.pointvalue == 1 ? color.lime : color.yellow)
+
+if showYear and barstate.islast
+    cell(ytab, 0, 0, "Year", color.yellow)
+    cell(ytab, 1, 0, "Trades", color.yellow)
+    cell(ytab, 2, 0, "Net pts", color.yellow)
+    cell(ytab, 3, 0, "Max DD pts", color.yellow)
+    int r = 1
+    for yi = 0 to 39
+        if array.get(yrTrades, yi) > 0
+            float yp = array.get(yrPts, yi)
+            cell(ytab, 0, r, str.tostring(2010 + yi), color.white)
+            cell(ytab, 1, r, str.tostring(array.get(yrTrades, yi)), color.white)
+            cell(ytab, 2, r, str.tostring(yp, "#,##0"), pnlCol(yp))
+            cell(ytab, 3, r, str.tostring(array.get(yrDD, yi), "#,##0"), color.orange)
+            r += 1

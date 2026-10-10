@@ -5,7 +5,7 @@ import engine as E
 
 @njit(cache=True)
 def joint(o, h, l, c, day, eod, t_ok, tL, tS, tLx, tSx, o_ok, oL, oS, atr, o_tpd,
-          t_sl, t_tp, o_slm, o_tpR, cost, use_t, use_o, o_max):
+          t_sl, t_tp, o_slm, o_tpR, cost, use_t, use_o, o_max, fill):
     n = len(c)
     out_ei = np.empty(2 * n, np.int64); out_xi = np.empty(2 * n, np.int64)
     out_dir = np.empty(2 * n, np.int64); out_mod = np.empty(2 * n, np.int64); out_p = np.empty(2 * n); k = 0
@@ -40,9 +40,9 @@ def joint(o, h, l, c, day, eod, t_ok, tL, tS, tLx, tSx, o_ok, oL, oS, atr, o_tpd
         net = td + od  # position at script execution (before this bar's orders)
         # close-of-bar exits
         if td != 0 and (eod[i] or (td == 1 and tLx[i]) or (td == -1 and tSx[i])):
-            out_ei[k] = tei; out_xi[k] = i; out_dir[k] = td; out_mod[k] = 0; out_p[k] = td * (c[i] - te) - cost; k += 1; td = 0
+            out_ei[k] = tei; out_xi[k] = i; out_dir[k] = td; out_mod[k] = 0; out_p[k] = td * (fill[i] - te) - cost; k += 1; td = 0
         if od != 0 and eod[i]:
-            out_ei[k] = oei; out_xi[k] = i; out_dir[k] = od; out_mod[k] = 1; out_p[k] = od * (c[i] - oe) - cost; k += 1; od = 0
+            out_ei[k] = oei; out_xi[k] = i; out_dir[k] = od; out_mod[k] = 1; out_p[k] = od * (fill[i] - oe) - cost; k += 1; od = 0
         if eod[i]:
             continue
         # trend entries: fresh confluence, or a signal blocked last bar (opposite position) while confluence holds
@@ -57,12 +57,12 @@ def joint(o, h, l, c, day, eod, t_ok, tL, tS, tLx, tSx, o_ok, oL, oS, atr, o_tpd
                 if net * d < 0:
                     t_pend = d
                 else:
-                    td = d; te = c[i]; tei = i; t_pend = 0
+                    td = d; te = fill[i]; tei = i; t_pend = 0
                     ts_ = c[i] - d * t_sl * atr[i]; tt = c[i] + d * t_tp * atr[i]
         # ORB entries
         if use_o and od == 0 and o_ok[i] and o_cnt < o_max:
             d = 1 if oL[i] else (-1 if oS[i] else 0)
             if d != 0 and net * d >= 0:
-                od = d; oe = c[i]; oei = i; o_cnt += 1
+                od = d; oe = fill[i]; oei = i; o_cnt += 1
                 os_ = c[i] - d * o_slm * atr[i]; ot = c[i] + d * o_tpR * o_tpd[i]
     return out_ei[:k], out_xi[:k], out_dir[:k], out_mod[:k], out_p[:k]

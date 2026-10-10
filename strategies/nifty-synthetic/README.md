@@ -91,7 +91,25 @@ Robustness checks behind the choice:
 - **Neighbours of the final trend module are all positive out of sample.** Every tested neighbour (ST 20–40 × 2.5–3.5, EMA 50/100/200, three exit variants) has out-of-sample Sharpe between 1.26 and 2.79.
 - **The two modules diversify each other.** Their daily P&L correlation is only 0.24.
 
+## TradingView sizing (fixed)
+
+The first version of the script passed `qty = 65` straight to the Strategy Tester. On symbols with a point value ≠ 1 (TradingView reports 50 for `NSE:NIFTY1!`), every trade became 65 × 50 = 3,250 units, about 50 lots. That is why one test showed ₹6.48 cr P&L and a "153%" drawdown: ₹6.48 cr ÷ 3,250 ≈ 19,950 pts, and the 2015 drawdown of 229 pts × 3,250 = ₹7.4 L on ₹5 L capital.
+
+The script now sends `qty = units / syminfo.pointvalue`. Its dashboard computes points and ₹ from entry/exit prices, net of a cost input, so the dashboard is correct on any symbol. On a futures symbol, also set *Properties → Commission* to `<point value>` INR per contract; the dashboard tells you the value.
+
+## Execution-delay check
+
+| Fill assumption | Net pts | Sharpe | Max DD |
+|---|---|---|---|
+| Close of the signal bar (Pine model) | 19,421 | 1.83 | 863 |
+| Open of the next 1-min bar | 19,307 | 1.83 | 866 |
+| Close of the next 1-min bar (1 min late) | 17,507 | 1.67 | 891 |
+
+Drawdown is 863 pts on daily closes, 863 trade-by-trade, and 887 if open trades are marked at their worst intrabar price.
+
 ## Caveats (read before trading it)
+
+* **Spot vs futures.** The back-test uses the spot index, whose 1-min prints are slightly stale (constituents trade asynchronously). That can flatter short-horizon trend signals. A TradingView run on `NSE:NIFTY1!` (real futures prints) showed a lower profit factor (~1.30 before costs) and a ~2,500-pt drawdown in 2026, a period after the end of this data set. Treat the futures run as the more realistic estimate.
 
 * **Spot index used as a proxy.** The back-test uses NIFTY spot as the price of the synthetic future. Intraday moves track closely, but the futures basis and expiry-day option behaviour are not modelled.
 * **Costs on four option fills.** A synthetic round trip is 4 option fills: brokerage, STT on the sell legs, exchange fees and bid-ask spread. That can exceed 2 pts, so check your own all-in cost. The edge survives 5 pts (Sharpe 1.25).
