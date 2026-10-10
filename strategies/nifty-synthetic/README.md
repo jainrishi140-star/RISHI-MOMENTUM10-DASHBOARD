@@ -1,7 +1,9 @@
 # NIFTY 50 synthetic futures: Trend + IB breakout (15 min)
 
 Pine script: [`NIFTY_SYN_TREND_IB.pine`](NIFTY_SYN_TREND_IB.pine). Add it to a **15-minute** chart of `NSE:NIFTY`
-(or `NSE:NIFTY1!`) on TradingView.
+(or `NSE:NIFTY1!`) on TradingView. It is a full backtester: results appear in the Strategy Tester, and an on-chart dashboard
+shows per-module trades, win %, PF, net points / ₹, max DD and live bias. Inputs add a backtest date range and a long/short-only switch.
+Full 2015+ history in TradingView needs Deep Backtesting, because 15-minute charts load a limited number of bars.
 
 ![equity](results/equity_curve.png)
 
