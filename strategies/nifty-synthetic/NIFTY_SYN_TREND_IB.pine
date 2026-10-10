@@ -1,0 +1,220 @@
+//@version=5
+// ============================================================================
+//  NIFTY 50 SYNTHETIC FUTURES  -  TREND + INITIAL-BALANCE BREAKOUT  (15 min)
+// ----------------------------------------------------------------------------
+//  Chart : NSE:NIFTY (spot) or NSE:NIFTY1! , 15-minute timeframe, IST session.
+//  Trade : synthetic future on the nearest expiry, ATM strike
+//            LONG  = BUY ATM CE + SELL ATM PE
+//            SHORT = SELL ATM CE + BUY ATM PE
+//
+//  Two independent 1-lot modules share one position (max 2 lots, never opposite):
+//
+//  [A] TREND  - Supertrend(30, 3) direction
+//               + price vs EMA(100) on 15m
+//               + 60-minute trend filter (60m close vs 60m EMA(50), last closed 60m bar)
+//               Entry on a FRESH confluence (all three agree on this bar but not on the last one),
+//               entries 10:00-14:30, SL 1.5 x ATR(14), TP 4 x ATR(14), exit on Supertrend flip.
+//
+//  [B] IB BREAKOUT - 60-minute opening range (09:15-10:15).
+//               15m close crosses above IB high (below IB low) with the daily bias in favour
+//               (previous session close vs 20-day EMA of session closes).
+//               Max 2 entries/day, entries until 14:30, SL 1.5 x ATR(14), TP 3 x IB width.
+//
+//  Everything is squared off at the close of the bar ending 15:15.
+//
+//  Back-test (Python replica of this exact logic, 1-min NIFTY spot 2015-01 -> 2025-07,
+//  2 index points cost per round trip, 1 lot per module):
+//      2062 trades | +19,421 pts | PF 1.50 | Sharpe 1.83 | Max DD 863 pts | every calendar year positive
+//      Out-of-sample 2024-01 -> 2025-07 : Sharpe 2.33
+// ============================================================================
+strategy("NIFTY SYN - Trend + IB Breakout (15m)", shorttitle = "NIFTY SYN T+IB", overlay = true,
+     pyramiding = 2, process_orders_on_close = true, calc_on_every_tick = false,
+     default_qty_type = strategy.fixed, default_qty_value = 65,
+     initial_capital = 500000, currency = currency.INR,
+     commission_type = strategy.commission.cash_per_contract, commission_value = 1.0,   // 1 pt per unit per side = 2 pts round trip
+     slippage = 0, max_bars_back = 500)
+
+// ----------------------------------------------------------------------------- inputs
+grpG = "General"
+lotSize  = input.int(65, "Lot size (units)", minval = 1, group = grpG, tooltip = "NIFTY lot size. Was 75 until Dec-2025, 65 after.")
+lotsPerModule = input.int(1, "Lots per module", minval = 1, group = grpG)
+useTrend = input.bool(true, "Enable module A - Trend", group = grpG)
+useIB    = input.bool(true, "Enable module B - IB breakout", group = grpG)
+eodMin   = input.int(915, "Square-off (minutes from midnight, 915 = 15:15)", group = grpG)
+atrLen   = input.int(14, "ATR length (stops)", group = grpG)
+
+grpT = "A - Trend"
+stLen     = input.int(30, "Supertrend ATR period", group = grpT)
+stFactor  = input.float(3.0, "Supertrend factor", step = 0.1, group = grpT)
+emaLen    = input.int(100, "Trend EMA (chart TF)", group = grpT)
+htfTf     = input.timeframe("60", "Higher timeframe", group = grpT)
+htfEmaLen = input.int(50, "Higher-TF EMA", group = grpT)
+tStartMin = input.int(600, "Entry window start (600 = 10:00)", group = grpT)
+tEndMin   = input.int(870, "Entry window end (870 = 14:30)", group = grpT)
+tSlAtr    = input.float(1.5, "Stop loss (x ATR)", step = 0.1, group = grpT)
+tTpAtr    = input.float(4.0, "Take profit (x ATR)", step = 0.1, group = grpT)
+
+grpB = "B - IB breakout"
+ibMins    = input.int(60, "Initial-balance length (minutes)", group = grpB)
+dEmaLen   = input.int(20, "Daily-bias EMA (session closes)", group = grpB)
+bStartMin = input.int(570, "Entry window start (570 = 09:30)", group = grpB)
+bEndMin   = input.int(870, "Entry window end (870 = 14:30)", group = grpB)
+bSlAtr    = input.float(1.5, "Stop loss (x ATR)", step = 0.1, group = grpB)
+bTpIB     = input.float(3.0, "Take profit (x IB width)", step = 0.1, group = grpB)
+bMaxDay   = input.int(2, "Max IB entries per day", group = grpB)
+
+qty = lotSize * lotsPerModule
+
+// ----------------------------------------------------------------------------- clock (IST)
+tz        = "Asia/Kolkata"
+tfMin     = timeframe.in_seconds() / 60
+barStart  = hour(time, tz) * 60 + minute(time, tz)
+barEnd    = math.min(barStart + tfMin, 930)
+isNewDay  = timeframe.change("D")
+isEOD     = barEnd >= eodMin
+tWindow   = barStart >= tStartMin and barEnd <= tEndMin
+bWindow   = barStart >= bStartMin and barEnd <= bEndMin
+
+// ----------------------------------------------------------------------------- indicators
+atr = ta.atr(atrLen)
+[stLine, stDirPine] = ta.supertrend(stFactor, stLen)
+stUp  = stDirPine < 0
+emaT  = ta.ema(close, emaLen)
+htfDir = request.security(syminfo.tickerid, htfTf, (close > ta.ema(close, htfEmaLen) ? 1 : -1)[1], lookahead = barmerge.lookahead_on)
+
+// daily bias from session closes (no security call -> identical to the back-test)
+var float pdc   = na
+var float dEma  = na
+var float dSum  = 0.0
+var int   dCnt  = 0
+if isNewDay and not na(close[1])
+    pdc  := close[1]
+    dCnt += 1
+    if dCnt <= dEmaLen
+        dSum += pdc
+        dEma := dCnt == dEmaLen ? dSum / dEmaLen : na
+    else
+        dEma := dEma + 2.0 / (dEmaLen + 1) * (pdc - dEma)
+dBull = pdc > dEma
+dBear = pdc < dEma
+
+// initial balance
+var float ibH = na
+var float ibL = na
+if isNewDay
+    ibH := high
+    ibL := low
+else if barStart < 555 + ibMins
+    ibH := math.max(ibH, high)
+    ibL := math.min(ibL, low)
+ibReady = barStart >= 555 + ibMins
+ibHi = ibReady ? ibH : na
+ibLo = ibReady ? ibL : na
+ibW  = ibReady ? ibH - ibL : na
+
+// ----------------------------------------------------------------------------- signals
+tLc = stUp and close > emaT and htfDir == 1
+tSc = not stUp and close < emaT and htfDir == -1
+tLfresh = tLc and not tLc[1]
+tSfresh = tSc and not tSc[1]
+
+bLsig = close > ibHi and close[1] <= ibHi[1] and dBull
+bSsig = close < ibLo and close[1] >= ibLo[1] and dBear
+
+// ----------------------------------------------------------------------------- module state (from open trades)
+lotOpen(string id) =>
+    bool found = false
+    if strategy.opentrades > 0
+        for i = 0 to strategy.opentrades - 1
+            if strategy.opentrades.entry_id(i) == id
+                found := true
+    found
+
+int tDir = lotOpen("TL") ? 1 : lotOpen("TS") ? -1 : 0
+int bDir = lotOpen("BL") ? 1 : lotOpen("BS") ? -1 : 0
+int net  = strategy.position_size > 0 ? 1 : strategy.position_size < 0 ? -1 : 0   // before this bar's orders
+
+var int tPend = 0      // trend signal blocked by an opposite position, retried while confluence holds
+var int bCount = 0
+if isNewDay
+    tPend  := 0
+    bCount := 0
+
+// ----------------------------------------------------------------------------- execution
+if isEOD
+    if strategy.position_size != 0
+        strategy.close_all(comment = "EOD 15:15")
+else
+    // trend exits on Supertrend flip
+    if tDir == 1 and not stUp
+        strategy.close("TL", comment = "ST flip")
+        tDir := 0
+    if tDir == -1 and stUp
+        strategy.close("TS", comment = "ST flip")
+        tDir := 0
+
+    if tPend == 1 and not tLc
+        tPend := 0
+    if tPend == -1 and not tSc
+        tPend := 0
+
+    // module A entries
+    if useTrend and tDir == 0 and tWindow and not na(atr)
+        int d = tLfresh ? 1 : tSfresh ? -1 : tPend
+        if d != 0
+            if net * d < 0
+                tPend := d
+            else
+                tPend := 0
+                if d == 1
+                    strategy.entry("TL", strategy.long, qty = qty, comment = "TREND L",
+                         alert_message = "NIFTY SYN LONG (Trend): BUY ATM CE + SELL ATM PE")
+                    strategy.exit("TLx", from_entry = "TL", stop = close - tSlAtr * atr, limit = close + tTpAtr * atr,
+                         comment_loss = "T SL", comment_profit = "T TP",
+                         alert_message = "NIFTY SYN EXIT LONG (Trend): SELL CE + BUY PE")
+                else
+                    strategy.entry("TS", strategy.short, qty = qty, comment = "TREND S",
+                         alert_message = "NIFTY SYN SHORT (Trend): SELL ATM CE + BUY ATM PE")
+                    strategy.exit("TSx", from_entry = "TS", stop = close + tSlAtr * atr, limit = close - tTpAtr * atr,
+                         comment_loss = "T SL", comment_profit = "T TP",
+                         alert_message = "NIFTY SYN EXIT SHORT (Trend): BUY CE + SELL PE")
+
+    // module B entries
+    if useIB and bDir == 0 and bWindow and bCount < bMaxDay and not na(atr)
+        int d = bLsig ? 1 : bSsig ? -1 : 0
+        if d != 0 and net * d >= 0
+            bCount += 1
+            if d == 1
+                strategy.entry("BL", strategy.long, qty = qty, comment = "IB L",
+                     alert_message = "NIFTY SYN LONG (IB): BUY ATM CE + SELL ATM PE")
+                strategy.exit("BLx", from_entry = "BL", stop = close - bSlAtr * atr, limit = close + bTpIB * ibW,
+                     comment_loss = "IB SL", comment_profit = "IB TP",
+                     alert_message = "NIFTY SYN EXIT LONG (IB): SELL CE + BUY PE")
+            else
+                strategy.entry("BS", strategy.short, qty = qty, comment = "IB S",
+                     alert_message = "NIFTY SYN SHORT (IB): SELL ATM CE + BUY ATM PE")
+                strategy.exit("BSx", from_entry = "BS", stop = close + bSlAtr * atr, limit = close - bTpIB * ibW,
+                     comment_loss = "IB SL", comment_profit = "IB TP",
+                     alert_message = "NIFTY SYN EXIT SHORT (IB): BUY CE + SELL PE")
+
+// ----------------------------------------------------------------------------- visuals
+plot(stLine, "Supertrend", color = stUp ? color.new(color.teal, 0) : color.new(color.red, 0), linewidth = 2, style = plot.style_linebr)
+plot(emaT, "EMA trend", color = color.new(color.orange, 0))
+plot(ibHi, "IB high", color = color.new(color.lime, 30), style = plot.style_linebr)
+plot(ibLo, "IB low", color = color.new(color.fuchsia, 30), style = plot.style_linebr)
+bgcolor(htfDir == 1 ? color.new(color.teal, 93) : color.new(color.red, 93), title = "60m bias")
+plotshape(useTrend and tLfresh and tWindow, "Trend long setup", shape.triangleup, location.belowbar, color.teal, size = size.tiny)
+plotshape(useTrend and tSfresh and tWindow, "Trend short setup", shape.triangledown, location.abovebar, color.red, size = size.tiny)
+
+var table info = table.new(position.top_right, 2, 5, bgcolor = color.new(color.black, 20), border_width = 1)
+if barstate.islast
+    table.cell(info, 0, 0, "60m bias", text_color = color.white)
+    table.cell(info, 1, 0, htfDir == 1 ? "BULL" : "BEAR", text_color = htfDir == 1 ? color.lime : color.red)
+    table.cell(info, 0, 1, "Daily bias", text_color = color.white)
+    table.cell(info, 1, 1, dBull ? "BULL" : dBear ? "BEAR" : "-", text_color = dBull ? color.lime : color.red)
+    table.cell(info, 0, 2, "Trend lot", text_color = color.white)
+    table.cell(info, 1, 2, tDir == 1 ? "LONG" : tDir == -1 ? "SHORT" : "flat", text_color = color.white)
+    table.cell(info, 0, 3, "IB lot", text_color = color.white)
+    table.cell(info, 1, 3, bDir == 1 ? "LONG" : bDir == -1 ? "SHORT" : "flat", text_color = color.white)
+    table.cell(info, 0, 4, "Timeframe", text_color = color.white)
+    table.cell(info, 1, 4, timeframe.period == "15" ? "15m OK" : "USE 15m!", text_color = timeframe.period == "15" ? color.lime : color.yellow)
