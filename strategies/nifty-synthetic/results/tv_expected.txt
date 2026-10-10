@@ -1,0 +1,17 @@
+
+=== Key stats (TradingView format) NSE:NIFTY 15m, 65 units/module, ₹5,00,000 ===
+Total P&L      : ₹1,265,448  (+253.09%)
+Max drawdown   : ₹56,119  (4.67% of peak equity, on 2022-11-03)
+Profitable     : 49.76%  (1027/2064)
+Profit factor  : 1.501
+2015       trades   185 | net ₹      51,546 | profitable 48.11% | PF  1.31 | max DD ₹   15,356
+2016       trades   193 | net ₹      63,529 | profitable 47.15% | PF  1.42 | max DD ₹   17,224
+2017       trades   175 | net ₹       4,842 | profitable 41.14% | PF  1.04 | max DD ₹   26,718
+2018       trades   201 | net ₹     108,231 | profitable 53.73% | PF  1.63 | max DD ₹   16,675
+2019       trades   208 | net ₹      89,060 | profitable 48.56% | PF  1.42 | max DD ₹   36,159
+2020       trades   185 | net ₹     211,754 | profitable 56.76% | PF  1.95 | max DD ₹   22,884
+2021       trades   199 | net ₹      95,893 | profitable 48.74% | PF  1.30 | max DD ₹   33,652
+2022       trades   208 | net ₹      69,894 | profitable 51.44% | PF  1.19 | max DD ₹   56,119
+2023       trades   195 | net ₹     169,346 | profitable 54.36% | PF  1.77 | max DD ₹   18,127
+2024       trades   195 | net ₹     360,233 | profitable 49.23% | PF  2.15 | max DD ₹   43,476
+2025       trades   120 | net ₹      41,119 | profitable 45.83% | PF  1.15 | max DD ₹   42,063
