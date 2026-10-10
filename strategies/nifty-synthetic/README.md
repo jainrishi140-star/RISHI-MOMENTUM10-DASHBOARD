@@ -97,6 +97,23 @@ The first version of the script passed `qty = 65` straight to the Strategy Teste
 
 The script now sends `qty = units / syminfo.pointvalue`. Its dashboard computes points and ₹ from entry/exit prices, net of a cost input, so the dashboard is correct on any symbol. On a futures symbol, also set *Properties → Commission* to `<point value>` INR per contract; the dashboard tells you the value.
 
+## Expected TradingView result (same data, same P&L arithmetic)
+
+`research/tvreport.py` re-runs the back-test the way the Strategy Tester calculates it:
+- **Data:** NSE:NIFTY spot, 15m.
+- **Fills:** at the close of the signal bar.
+- **Stops and targets:** TradingView's intrabar path rule. No bar ever touches both, so the rule changes nothing.
+- **EMAs:** TradingView's seeding.
+- **P&L:** (exit − entry) × direction × 65 units, minus a commission of 1 INR/unit/side, on ₹5,00,000 capital.
+
+On `NSE:NIFTY`, 15m, 09-Jan-2015 → 25-Jul-2025, the Strategy Tester should show approximately:
+
+| Total P&L | Max drawdown | Profitable trades | Profit factor |
+|---|---|---|---|
+| +₹12,65,448 (+253%) | ₹56,119 (4.7% of peak equity, 03-Nov-2022) | 49.8% (1027/2064) | 1.50 |
+
+Per-year figures are in `results/tv_expected.txt`. Small differences can come from TradingView's own NIFTY prints and from special sessions (muhurat, Saturday DR drills), which this data set excludes.
+
 ## Execution-delay check
 
 | Fill assumption | Net pts | Sharpe | Max DD |

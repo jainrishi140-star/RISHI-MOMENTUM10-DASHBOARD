@@ -16,13 +16,18 @@
 //              SL 1.5xATR(14), TP 3x IB width.
 //  All positions squared off at the close of the bar ending 15:15.
 //
-//  Python replica, 1-min NIFTY spot 2015-01 -> 2025-07, 2 pts cost/round trip, 1 lot/module:
-//      2062 trades | +19,421 pts | PF 1.50 | Sharpe 1.83 | Max DD 863 pts | every year positive
-//      Out-of-sample 2024-01 -> 2025-07 Sharpe 2.33
+//  SAME DATA + SAME P&L ARITHMETIC AS THE PYTHON BACK-TEST:
+//    data   : NSE:NIFTY (spot index), 15m bars, IST session        -> put the chart on NSE:NIFTY
+//    fills  : close of the signal bar (process_orders_on_close); SL/TP intrabar via TradingView's
+//             broker emulator (no bar ever touches both SL and TP, so path assumptions do not matter)
+//    P&L    : (exit - entry) x direction x 65 units - commission 1 INR/unit/side (= 2 pts per round trip)
+//    capital: 5,00,000 INR, 1 lot (65) per module
+//  Expected Strategy Tester result on NSE:NIFTY, 09-Jan-2015 -> 25-Jul-2025 (set End date to compare):
+//      Total P&L +12,65,448 INR (+253%) | Max DD 56,119 INR (4.7%) | 2064 trades | 49.8% profitable | PF 1.50
 //  Full-history results in TradingView need "Deep Backtesting" (15m charts load limited bars).
-//  Sizing is point-value aware: Strategy Tester qty = units / syminfo.pointvalue. On a symbol with
-//  point value != 1 (e.g. NSE:NIFTY1!) also set Properties -> Commission to <point value> INR per contract.
-//  The dashboard (points and ₹) is computed from prices and is correct on any symbol.
+//  Sizing is point-value aware: qty = units / syminfo.pointvalue. On another symbol (e.g. NSE:NIFTY1!,
+//  point value 50) results use THAT symbol's prices; also set Properties -> Commission to <point value>.
+//  The dashboard (points and INR) uses the same formula as the back-test and is correct on any symbol.
 // ============================================================================
 strategy("NIFTY SYN - Trend + IB Breakout (15m) Backtester", shorttitle = "NIFTY SYN BT", overlay = true,
      pyramiding = 2, process_orders_on_close = true, calc_on_every_tick = false, calc_on_order_fills = false,
@@ -332,6 +337,10 @@ if showDash and barstate.islast
     cell(dash, 3, 7, str.tostring(qty, "#.##") + " ctr", color.white)
     cell(dash, 4, 7, "Tester commission", color.white)
     cell(dash, 5, 7, syminfo.pointvalue == 1 ? "OK (1/unit/side)" : "SET " + str.tostring(syminfo.pointvalue) + " INR/contract", syminfo.pointvalue == 1 ? color.lime : color.yellow)
+    bool sameData = syminfo.tickerid == "NSE:NIFTY" or syminfo.ticker == "NIFTY"
+    cell(dash, 0, 8, "Data", color.white)
+    cell(dash, 1, 8, syminfo.tickerid, color.white)
+    cell(dash, 2, 8, sameData ? "= back-test data (NSE:NIFTY spot)" : "differs from back-test (spot NSE:NIFTY)", sameData ? color.lime : color.yellow)
 
 if showYear and barstate.islast
     cell(ytab, 0, 0, "Year", color.yellow)

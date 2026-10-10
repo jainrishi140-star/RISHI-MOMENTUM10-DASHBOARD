@@ -4,8 +4,34 @@ from numba import njit
 import engine as E
 
 @njit(cache=True)
+def exit_px(pos, o, h, l, stop, tgt, tvpath):
+    """Fill price of a bracket (stop + limit) on one bar, or nan.
+    tvpath=True replicates TradingView's broker emulator: open gaps fill at the open; if both levels
+    are inside the bar, price is assumed to go open->high->low->close when the high is closer to
+    the open than the low, otherwise open->low->high->close. tvpath=False: stop always first."""
+    if pos == 1:
+        if o <= stop: return o
+        if o >= tgt: return o
+        hit_s = l <= stop; hit_t = h >= tgt
+        if hit_s and hit_t:
+            if tvpath and (h - o) < (o - l): return tgt
+            return stop
+        if hit_s: return stop
+        if hit_t: return tgt
+    else:
+        if o >= stop: return o
+        if o <= tgt: return o
+        hit_s = h >= stop; hit_t = l <= tgt
+        if hit_s and hit_t:
+            if tvpath and not ((h - o) < (o - l)): return tgt
+            return stop
+        if hit_s: return stop
+        if hit_t: return tgt
+    return np.nan
+
+@njit(cache=True)
 def joint(o, h, l, c, day, eod, t_ok, tL, tS, tLx, tSx, o_ok, oL, oS, atr, o_tpd,
-          t_sl, t_tp, o_slm, o_tpR, cost, use_t, use_o, o_max, fill):
+          t_sl, t_tp, o_slm, o_tpR, cost, use_t, use_o, o_max, fill, tvpath):
     n = len(c)
     out_ei = np.empty(2 * n, np.int64); out_xi = np.empty(2 * n, np.int64)
     out_dir = np.empty(2 * n, np.int64); out_mod = np.empty(2 * n, np.int64); out_p = np.empty(2 * n); k = 0
@@ -18,23 +44,11 @@ def joint(o, h, l, c, day, eod, t_ok, tL, tS, tLx, tSx, o_ok, oL, oS, atr, o_tpd
             cur = day[i]; o_cnt = 0; t_pend = 0
         # intrabar stops / targets
         if td != 0 and i > tei:
-            xp = np.nan
-            if td == 1:
-                if l[i] <= ts_: xp = min(o[i], ts_)
-                elif h[i] >= tt: xp = max(o[i], tt)
-            else:
-                if h[i] >= ts_: xp = max(o[i], ts_)
-                elif l[i] <= tt: xp = min(o[i], tt)
+            xp = exit_px(td, o[i], h[i], l[i], ts_, tt, tvpath)
             if not np.isnan(xp):
                 out_ei[k] = tei; out_xi[k] = i; out_dir[k] = td; out_mod[k] = 0; out_p[k] = td * (xp - te) - cost; k += 1; td = 0
         if od != 0 and i > oei:
-            xp = np.nan
-            if od == 1:
-                if l[i] <= os_: xp = min(o[i], os_)
-                elif h[i] >= ot: xp = max(o[i], ot)
-            else:
-                if h[i] >= os_: xp = max(o[i], os_)
-                elif l[i] <= ot: xp = min(o[i], ot)
+            xp = exit_px(od, o[i], h[i], l[i], os_, ot, tvpath)
             if not np.isnan(xp):
                 out_ei[k] = oei; out_xi[k] = i; out_dir[k] = od; out_mod[k] = 1; out_p[k] = od * (xp - oe) - cost; k += 1; od = 0
         net = td + od  # position at script execution (before this bar's orders)
