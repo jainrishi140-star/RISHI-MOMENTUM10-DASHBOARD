@@ -1,0 +1,221 @@
+//@version=6
+// Rishi TK TF as a TradingView STRATEGY (backtester). Same signal code as rishi_tk_tf.pine.
+// Its results can be compared with the TK TF Original System's Combined trade log (2009-2026, 1m).
+//
+// Trading rules (same conventions as the TK TF Original System's log):
+//   - always in the market: every Combined signal reverses the position
+//   - "Check signals only at 30-min marks" (default on) checks Combined only at 09:45 ... 15:15;
+//     turn it off to check on every candle, like the TK TF Original System
+//   - filled at the OPEN of the candle after the signal candle (TradingView's default fill)
+//   - ROI % per trade on spot NSE:NIFTY, not compounded
+// The results table (bottom right) shows total ROI, average ROI per year and per trade, win rate,
+// profit factor and max drawdown, measured exactly like the TK TF Original System's logs, next to
+// its figures. It covers the chart's loaded history; for 2009-2026 use a 1m NSE:NIFTY
+// chart with Deep Backtesting. In the Strategy Tester each trade is 1 crore, so net profit /
+// 1,00,000 = total ROI %.
+strategy("Rishi TK TF Strategy", shorttitle = "Rishi TK TF Strat", overlay = true, initial_capital = 10000000, default_qty_type = strategy.cash, default_qty_value = 10000000, commission_type = strategy.commission.percent, commission_value = 0, pyramiding = 0, margin_long = 0, margin_short = 0)
+
+grpS = "Signal source"
+useAlt = input.bool(false, "Compute signals on another symbol", group = grpS, tooltip = "Off = chart symbol (the TK TF Original System's logs match spot NSE:NIFTY). Turn on to run the same rules on another feed, e.g. NSE:NIFTY1!.")
+altSym = input.symbol("NSE:NIFTY1!", "Signal symbol", group = grpS)
+
+grpP = "Parameters"
+slowTf    = input.timeframe("30", "Slow timeframe", group = grpP)
+slowLen   = input.int(63, "Slow EMA length (HLC3)", minval = 1, group = grpP)
+slowLead  = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, group = grpP)
+lockChecks = input.bool(true, "Check signals only at 30-min marks (09:45-15:15)", group = grpP, tooltip = "On: Combined is checked only when a chart candle closes at 09:45, 10:15, 10:45 ... 15:15 (exchange time). Changes between checks, or after 15:15, wait for the next check (next day 09:45). Off: checked on every candle, like the TK TF Original System.")
+fastTf    = input.timeframe("1", "Fast timeframe", group = grpP, tooltip = "Timeframe Fast is calculated on. Default 1 minute, the timeframe of the TK TF Original System's trade logs, so Fast and Combined stay the same on any chart from 1m to 30m. Leave empty to use the chart's timeframe, as the TK TF Original System does.")
+
+grpD = "Display"
+showSlow = input.bool(false, "Slow signals", group = grpD, inline = "sig")
+showFast = input.bool(false, "Fast signals", group = grpD, inline = "sig")
+showComb = input.bool(true, "Combined signals", group = grpD, inline = "sig")
+showEma  = input.bool(true, "Plot Slow EMA", group = grpD)
+showBg   = input.bool(true, "Shade Combined state", group = grpD)
+showTbl  = input.bool(true, "Status table", group = grpD)
+
+sym = useAlt ? altSym : syminfo.tickerid
+
+leadEma(float src, float a) =>
+    var float v = na
+    v := na(v) ? src : a * src + (1 - a) * v
+    v
+
+slowState() => math.sign(leadEma(hlc3, slowLead) - ta.ema(hlc3, slowLen))
+slowEma()   => ta.ema(hlc3, slowLen)
+
+// Weights fitted on the 30m + 5m charts and validated on the 3m and 1m charts
+fastState() =>
+    float b = ta.ema(hlc3, 113)
+    float score = 0.0128 * (hlc3 - b) - 0.0381 * (ta.ema(hlc3, 5) - b) + 0.0198 * (ta.ema(hlc3, 10) - b) + 0.1147 * (ta.ema(hlc3, 20) - b) - 0.6092 * (ta.ema(hlc3, 40) - b) + 0.5811 * (ta.ema(hlc3, 60) - b) + 1.0 * (ta.ema(hlc3, 80) - b) + 0.4886 * (ta.ema(hlc3, 100) - b) - 0.2437 * (ta.ema(hlc3, 120) - b) - 0.7241 * (ta.ema(hlc3, 140) - b) - 0.8173 * (ta.ema(hlc3, 160) - b) - 0.1915 * (ta.ema(hlc3, 200) - b) + 0.5852 * (ta.ema(hlc3, 250) - b) - 0.1643 * (ta.ema(hlc3, 300) - b)
+    math.sign(score)
+
+// Slow: the 30m value appears on the chart candle that closes with the 30m candle (e.g. the 09:44
+// candle on a 1m chart, closing at 09:45), as the TK TF Original System shows it.
+float slow = request.security(sym, slowTf, slowState())
+float slowLine = request.security(sym, slowTf, slowEma())
+
+// Fast: when locked to a timeframe below the chart's, read every intrabar Fast value and replay
+// the Combined rule bar by bar, so Combined matches what the locked timeframe's chart would show.
+// Inside a chart bar, Slow keeps its previous value until the last intrabar, the one that closes
+// the 30m candle (exact for charts from 1m to 30m).
+string fastReqTf  = fastTf == "" or timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(fastTf) ? timeframe.period : fastTf
+bool   fastLocked = fastReqTf != timeframe.period
+float  fastChart  = request.security(sym, timeframe.period, fastState())
+array<float> fastIntra = request.security_lower_tf(sym, fastReqTf, fastState())
+
+var float fast     = na
+var float combFree = 0.0  // checked on every (intrabar) candle, like the TK TF Original System
+if fastLocked
+    int n = array.size(fastIntra)
+    if n > 0
+        for i = 0 to n - 1
+            float f = array.get(fastIntra, i)
+            float s = i == n - 1 ? slow : nz(slow[1])
+            if s == f and s != 0
+                combFree := s
+        fast := array.get(fastIntra, n - 1)
+else
+    fast := fastChart
+    if slow == fast and slow != 0
+        combFree := slow
+
+// Fixed check times: the chart candle that closes at 09:45, 10:15 ... 15:15 exchange time
+int  closeMin = hour(time_close, "Asia/Kolkata") * 60 + minute(time_close, "Asia/Kolkata")
+bool isCheck  = closeMin >= 585 and closeMin <= 915 and (closeMin - 585) % 30 == 0
+
+var float comb = 0.0
+if lockChecks
+    if isCheck and slow == fast and slow != 0
+        comb := slow
+else
+    comb := combFree
+
+flipUp(float s) => s == 1 and nz(s[1]) == -1
+flipDn(float s) => s == -1 and nz(s[1]) == 1
+
+combBuy  = flipUp(comb)
+combSell = flipDn(comb)
+slowBuy  = flipUp(slow)
+slowSell = flipDn(slow)
+fastBuy  = flipUp(fast)
+fastSell = flipDn(fast)
+
+plot(showEma ? slowLine : na, "Slow EMA (30m HLC3)", color = color.new(color.orange, 0), linewidth = 2)
+bgcolor(showBg and comb == 1 ? color.new(color.teal, 90) : showBg and comb == -1 ? color.new(color.red, 90) : na)
+
+plotshape(showComb and combBuy,  "Combined BUY",  shape.labelup,   location.belowbar, color.new(color.teal, 0), text = "BUY",  textcolor = color.white, size = size.small)
+plotshape(showComb and combSell, "Combined SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),  text = "SELL", textcolor = color.white, size = size.small)
+plotshape(showSlow and slowBuy,  "Slow BUY",  shape.triangleup,   location.belowbar, color.new(color.blue, 0),   text = "S", size = size.tiny)
+plotshape(showSlow and slowSell, "Slow SELL", shape.triangledown, location.abovebar, color.new(color.maroon, 0), text = "S", size = size.tiny)
+plotshape(showFast and fastBuy,  "Fast BUY",  shape.circle, location.belowbar, color.new(color.aqua, 0),   text = "F", size = size.tiny)
+plotshape(showFast and fastSell, "Fast SELL", shape.circle, location.abovebar, color.new(color.fuchsia, 0), text = "F", size = size.tiny)
+
+// Hidden plots so the values appear in the Data Window and CSV export, for comparison with TK TF Original
+plot(slow, "Slow", display = display.data_window)
+plot(fast, "Fast", display = display.data_window)
+plot(comb, "Combined", display = display.data_window)
+
+stateText(float s) => s == 1 ? "BULL" : s == -1 ? "BEAR" : "-"
+stateColor(float s) => s == 1 ? color.teal : s == -1 ? color.red : color.gray
+
+var table tbl = table.new(position.top_right, 2, 4, border_width = 1)
+if showTbl and barstate.islast
+    table.cell(tbl, 0, 0, "Rishi TK TF", text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 1, 0, sym, text_color = color.white, bgcolor = color.purple)
+    table.cell(tbl, 0, 1, "Slow (" + slowTf + ")")
+    table.cell(tbl, 1, 1, stateText(slow), text_color = color.white, bgcolor = stateColor(slow))
+    table.cell(tbl, 0, 2, "Fast (" + (fastLocked ? fastReqTf : "chart") + ")")
+    table.cell(tbl, 1, 2, stateText(fast), text_color = color.white, bgcolor = stateColor(fast))
+    table.cell(tbl, 0, 3, "Combined")
+    table.cell(tbl, 1, 3, stateText(comb), text_color = color.white, bgcolor = stateColor(comb))
+
+grpB = "Backtest"
+tradeSig  = input.string("Combined", "Trade signal", options = ["Combined", "Slow", "Fast"], group = grpB)
+fromTime  = input.time(timestamp("03 Feb 2009 00:00 +0530"), "Backtest from", group = grpB)
+toTime    = input.time(timestamp("31 Dec 2099 00:00 +0530"), "Backtest to", group = grpB)
+costPct   = input.float(0.0, "Cost per side (%)", minval = 0.0, step = 0.01, group = grpB)
+showStats = input.bool(true, "Show results table", group = grpB)
+
+float sigState = tradeSig == "Combined" ? comb : tradeSig == "Slow" ? slow : fast
+bool inRange = time >= fromTime and time <= toTime
+// Trade only on a signal change (no entry on the first bar of the range)
+bool goLong  = flipUp(sigState)
+bool goShort = flipDn(sigState)
+if inRange and goLong
+    strategy.entry("Long", strategy.long)
+if inRange and goShort
+    strategy.entry("Short", strategy.short)
+if not inRange and time > toTime
+    strategy.close_all()
+
+// Results table: same statistics as the Python backtester and the TK TF Original System's logs.
+// Fill = open of the candle after the signal, ROI % per trade on price, not compounded,
+// max drawdown = largest fall of the cumulative ROI % from its peak.
+var float entryPx     = na
+var int   entrySide   = 0
+var int   pendingSide = 0
+var int   nTrades     = 0
+var int   nWins       = 0
+var float sumRoi      = 0.0
+var float grossWin    = 0.0
+var float grossLoss   = 0.0
+var float peakRoi     = 0.0
+var float maxDD       = 0.0
+var float firstT      = na
+var float lastT       = na
+
+if pendingSide != 0
+    if entrySide != 0
+        float roi = entrySide * (open / entryPx - 1) * 100 - 2 * costPct
+        nTrades += 1
+        sumRoi += roi
+        if roi > 0
+            nWins += 1
+            grossWin += roi
+        else
+            grossLoss -= roi
+        peakRoi := math.max(peakRoi, sumRoi)
+        maxDD := math.max(maxDD, peakRoi - sumRoi)
+        lastT := time
+    else
+        firstT := time
+    entryPx := open
+    entrySide := pendingSide
+    pendingSide := 0
+
+if inRange and goLong
+    pendingSide := 1
+if inRange and goShort
+    pendingSide := -1
+
+fmt(float v, string f) => na(v) ? "-" : str.tostring(v, f)
+
+var table res = table.new(position.bottom_right, 3, 8, border_width = 1)
+if showStats and barstate.islast
+    float years = na(firstT) or na(lastT) or lastT <= firstT ? na : (lastT - firstT) / (365.25 * 86400000.0)
+    float pf    = grossLoss > 0 ? grossWin / grossLoss : na
+    table.cell(res, 0, 0, tradeSig + " backtest", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 1, 0, "Rishi TK TF", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 2, 0, "TK TF Original 2009-26", text_color = color.white, bgcolor = color.purple)
+    table.cell(res, 0, 1, "Trades")
+    table.cell(res, 1, 1, str.tostring(nTrades))
+    table.cell(res, 2, 1, "2336")
+    table.cell(res, 0, 2, "Total ROI %")
+    table.cell(res, 1, 2, fmt(sumRoi, "#.##"))
+    table.cell(res, 2, 2, "441.3")
+    table.cell(res, 0, 3, "Avg ROI / year %")
+    table.cell(res, 1, 3, fmt(na(years) ? na : sumRoi / years, "#.##"))
+    table.cell(res, 2, 3, "25.0")
+    table.cell(res, 0, 4, "Avg ROI / trade %")
+    table.cell(res, 1, 4, fmt(nTrades > 0 ? sumRoi / nTrades : na, "#.###"))
+    table.cell(res, 2, 4, "0.189")
+    table.cell(res, 0, 5, "Win rate %")
+    table.cell(res, 1, 5, fmt(nTrades > 0 ? 100.0 * nWins / nTrades : na, "#.#"))
+    table.cell(res, 2, 5, "31.9")
+    table.cell(res, 0, 6, "Profit factor")
+    table.cell(res, 1, 6, fmt(pf, "#.##"))
+    table.cell(res, 2, 6, "1.65")
+    table.cell(res, 0, 7, "Max drawdown %")
+    table.cell(res, 1, 7, fmt(maxDD, "#.##"))
+    table.cell(res, 2, 7, "12.5")
