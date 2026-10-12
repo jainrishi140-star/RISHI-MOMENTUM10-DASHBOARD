@@ -1,5 +1,6 @@
 //@version=6
 // Rishi TK TF - Robust (trend-gated shorts), TradingView strategy / backtester
+// Trend filter option: "Signal-price average" (original, N calendar days) or "Daily SMA" (N daily closes).
 //
 // Use on a 1-MINUTE NSE:NIFTY chart, with Deep Backtesting from 03 Feb 2009.
 //   Signals  : Rishi TK TF Every-Candle (Combined checked on every 1m candle)
@@ -22,6 +23,8 @@ slowLead = input.float(1.27, "Slow lead factor", minval = 1.0, step = 0.01, grou
 grpR = "Robust rules"
 gateOn     = input.bool(true, "Trend-gated shorts", group = grpR, tooltip = "On: a SELL signal is shorted only when price is at or below the trend average; above it the strategy goes flat until the next BUY. Off: plain Rishi TK TF Every-Candle (always in the market).")
 gateDays   = input.int(30, "Trend average length (calendar days)", minval = 5, maxval = 365, group = grpR, tooltip = "Time-weighted average of the signal prices over this many calendar days. 30 was chosen on 2009-2017 and held up on 2018-2026; 20-50 and 100 work about as well.")
+trendMode  = input.string("Signal-price average", "Trend filter", options = ["Signal-price average", "Daily SMA"], group = grpR, tooltip = "Signal-price average: time-weighted average of the signal prices over the last N calendar days (original Robust rule). Daily SMA: simple moving average of the last N daily closes, using the previous completed day only.")
+smaLen     = input.int(30, "Daily SMA length (days)", minval = 2, maxval = 400, group = grpR, tooltip = "Used only when the trend filter is Daily SMA.")
 shortUp    = input.float(0.0, "Short size above the average (0 = flat)", minval = 0.0, maxval = 1.0, step = 0.25, group = grpR)
 sizeMult   = input.float(1.0, "Position size multiplier", minval = 0.1, maxval = 5.0, step = 0.05, group = grpR, tooltip = "1 = 1 crore per trade. About 1.2-1.3 brings the Robust version's drawdown back to the Every-Candle level.")
 
@@ -94,7 +97,11 @@ var float trendAvg = na
 if buySig or sellSig
     trendAvg := flipAvg(flipT, flipP, time_close, gateDays)
 
-bool gated = gateOn and sellSig and not na(trendAvg) and close > trendAvg
+// Daily SMA of the previous completed day (no look-ahead): the [1] value with lookahead on.
+float dailySma = request.security(syminfo.tickerid, "D", ta.sma(close, smaLen)[1], lookahead = barmerge.lookahead_on)
+float trendLine = trendMode == "Daily SMA" ? dailySma : trendAvg
+
+bool gated = gateOn and sellSig and not na(trendLine) and close > trendLine
 
 // ---------- Orders ----------
 bool inRange = time >= fromTime
@@ -112,7 +119,7 @@ if inRange and sellSig
 // ---------- Chart display ----------
 float pos = strategy.position_size
 bgcolor(pos > 0 ? color.new(color.teal, 90) : pos < 0 ? color.new(color.red, 90) : na)
-plot(showAvg ? trendAvg : na, "Trend average", color.new(color.orange, 0), 2, plot.style_stepline)
+plot(showAvg ? trendLine : na, "Trend line", color.new(color.orange, 0), 2, plot.style_stepline)
 plotshape(inRange and buySig, "BUY", shape.labelup, location.belowbar, color.new(color.teal, 0), text = "BUY", textcolor = color.white, size = size.small)
 plotshape(inRange and sellSig and not gated, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0), text = "SELL", textcolor = color.white, size = size.small)
 plotshape(inRange and gated, "FLAT", shape.labeldown, location.abovebar, color.new(color.gray, 0), text = "FLAT", textcolor = color.white, size = size.small)

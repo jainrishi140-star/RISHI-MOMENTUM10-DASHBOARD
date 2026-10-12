@@ -198,6 +198,24 @@ Deep Backtesting.
 python3 robustness_research.py <rishi_every_candle_trades.csv> --out robustness_results.csv
 ```
 
+### Trend filter: signal-price average vs daily SMA
+
+The gate can use either trend line (setting "Trend filter" in `rishi_tk_tf_robust_strategy.pine` and `adc_tf_strategy.pine`):
+
+- **Signal-price average** (original): time-weighted average of the signal prices over the last N calendar days.
+- **Daily SMA**: simple average of the last N daily closes, previous completed day only (no look-ahead).
+
+`trend_filter_compare.py` backtests both on the Every-Candle trade log. Daily closes were only available from 2020, so the like-for-like comparison runs 4 May 2020 to 24 Sep 2026 (the 30-day filters agree on 94.5% of SELL signals). Results are in `trend_filter_results.csv`.
+
+| 2020-2026, 30-day filter | No filter | Signal-price average | Daily SMA |
+|---|---|---|---|
+| Shorts taken | 439 | 166 | 170 |
+| Before cost: ROI / CAGR / max DD (compounded) | 112.2% / 18.0% / 10.5% | 114.8% / 18.6% / 10.1% | 111.5% / 18.0% / 9.0% |
+| Synthetic cost (0.0118% a side): CAGR / max DD | 14.2% / 11.2% | 16.0% / 10.6% | 15.4% / 9.6% |
+| Profit factor, before cost | 1.46 | 1.68 | 1.66 |
+
+Both filters give almost the same result; the daily SMA has the lower drawdown, the signal-price average the higher return. The difference is within noise for a 6-year sample.
+
 ## Files
 
 | File | What it is |
@@ -207,6 +225,7 @@ python3 robustness_research.py <rishi_every_candle_trades.csv> --out robustness_
 | `rishi_tk_tf_fixed_strategy.pine` | Simplest Rishi TK TF backtester for TradingView: fixed 09:45-15:15 checks built in, 1m chart only, for Deep Backtesting and trade-log export |
 | `rishi_tk_tf_strategy.pine` | Rishi TK TF backtester for TradingView (Deep Backtesting), with a results table next to the TK TF Original System's figures |
 | `rishi_tk_tf_robust_strategy.pine` | Rishi TK TF Robust: Every-Candle signals with trend-gated shorts, 1m chart only, table comparing it with plain Every-Candle |
+| `trend_filter_compare.py`, `trend_filter_results.csv` | Backtest of the signal-price average vs the daily SMA as the gate's trend line (2020-2026) |
 | `robustness_research.py`, `robustness_results.csv` | The 90 variations tested on the Every-Candle trade log, with in-sample / out-of-sample, cost, walk-forward, bootstrap and Monte Carlo checks |
 | `rishi_tk_tf.py` | Rishi TK TF in Python: `backtest`, `verify` / `checklog` against the TK TF Original System, `logstats` of a TK TF Original log |
 | `is_oos.py`, `monte_carlo.py` | In-sample / out-of-sample and Monte Carlo tests on two TradingView trade-list exports |

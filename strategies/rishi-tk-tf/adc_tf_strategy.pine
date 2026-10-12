@@ -34,6 +34,8 @@ sizeMult = input.float(1.0, "Position size multiplier", minval = 0.1, maxval = 5
 costPct  = input.float(0.0, "Cost per side for the tables (%)", minval = 0.0, step = 0.01, group = grpB, tooltip = "Used by the results and P&L tables. For the Strategy Tester set the same value as Commission in the strategy Properties.")
 gateOn   = input.bool(false, "Trend-gated shorts (Robust rule)", group = grpB, tooltip = "On: a SELL is shorted only when price is at or below the trend average of the signal prices; above it the long is closed and the strategy stays flat until the next BUY.")
 gateDays = input.int(30, "Trend average length (calendar days)", minval = 5, maxval = 365, group = grpB)
+trendMode = input.string("Signal-price average", "Trend filter used by the gate", options = ["Signal-price average", "Daily SMA"], group = grpB, tooltip = "Signal-price average: time-weighted average of the signal prices over the last N calendar days (original Robust rule). Daily SMA: simple moving average of the last N daily closes, using the previous completed day only.")
+smaLen   = input.int(30, "Daily SMA length (days)", minval = 2, maxval = 400, group = grpB, tooltip = "Used only when the trend filter is Daily SMA.")
 
 grpD = "Display"
 showComb   = input.bool(true, "BUY / SELL labels", group = grpD)
@@ -155,7 +157,10 @@ flipAvg(array<int> ts, array<float> ps, int nowT, int days) =>
 var float trendAvg = na
 if combBuy or combSell
     trendAvg := flipAvg(flipT, flipP, time_close, gateDays)
-bool gated = gateOn and combSell and not na(trendAvg) and close > trendAvg
+// Daily SMA of the previous completed day (no look-ahead): the [1] value with lookahead on.
+float dailySma = request.security(syminfo.tickerid, "D", ta.sma(close, smaLen)[1], lookahead = barmerge.lookahead_on)
+float trendLine = trendMode == "Daily SMA" ? dailySma : trendAvg
+bool gated = gateOn and combSell and not na(trendLine) and close > trendLine
 
 // ---------- Orders ----------
 bool  inRange = time >= fromTime and time <= toTime
@@ -185,7 +190,7 @@ plot(showEma ? slowLine : na, "Slow EMA glow", color = color.new(emaCol, 80), li
 pEma   = plot(slowLine, "Slow EMA (30m HLC3)", color = showEma ? emaCol : na, linewidth = 2)
 pPrice = plot(close, "Price (ribbon)", color = na, display = display.none, editable = false)
 fill(pEma, pPrice, color = showRibbon ? color.new(combCol, 85) : na, title = "Trend ribbon")
-plot(showAvg ? trendAvg : na, "Trend average", color = color.new(color.orange, 0), linewidth = 2, style = plot.style_stepline)
+plot(showAvg ? trendLine : na, "Trend line", color = color.new(color.orange, 0), linewidth = 2, style = plot.style_stepline)
 
 if showComb and inRange and combBuy
     label.new(bar_index, low, "BUY" + (showPrice ? "\n" + str.tostring(close, "#,##0.00") : ""), style = label.style_label_up, color = bullCol, textcolor = color.white, size = size.small, yloc = yloc.belowbar)
@@ -413,7 +418,7 @@ if showRes and barstate.islast
     float years = na(firstT) or na(lastT) or lastT <= firstT ? na : (lastT - firstT) / (365.25 * 86400000.0)
     float pf    = st.gl > 0 ? st.gw / st.gl : na
     float cagr  = na(years) ? na : (math.pow(st.eq, 1 / years) - 1) * 100
-    string mode = (lockChecks ? "30-min checks" : "Every candle") + (gateOn ? " + Robust" : "")
+    string mode = (lockChecks ? "30-min checks" : "Every candle") + (gateOn ? (trendMode == "Daily SMA" ? " + Robust (SMA " + str.tostring(smaLen) + ")" : " + Robust") : "")
     headCell(res, 0, 0, "ADC TF backtest")
     headCell(res, 1, 0, mode)
     resRow(1, "Period", na(firstT) ? "–" : str.format_time(firstT, "dd MMM yyyy", "Asia/Kolkata") + " → " + (na(lastT) ? "–" : str.format_time(lastT, "dd MMM yyyy", "Asia/Kolkata")), accentCol)
