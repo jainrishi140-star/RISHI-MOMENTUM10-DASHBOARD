@@ -63,6 +63,8 @@ export interface StrategyDashboardProps {
   title: string;
   subtitle: string;
   siblingStrategies?: SiblingStrategyDef[];
+  // Strategy rules shown at the bottom of the page, one bullet per entry.
+  rules?: string[];
   // Name of a manually-kept "Realised" tab (booked trades). NAV / Total P&L
   // always include booked P&L from a tab named "Realised" (0 if the sheet has
   // none, matching scripts/snapshot-nav.mjs); passing this prop also shows the
@@ -80,6 +82,7 @@ export default async function StrategyDashboard({
   title,
   subtitle,
   siblingStrategies = [],
+  rules = [],
   realisedTab,
   hideMonitorTables = false,
 }: StrategyDashboardProps) {
@@ -511,6 +514,19 @@ export default async function StrategyDashboard({
               </table>
             </div>
           </div>
+        )}
+
+        {rules.length > 0 && (
+          <section className="mt-12 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Strategy Rules
+            </div>
+            <ul className="list-disc space-y-1.5 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
+              {rules.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </section>
         )}
 
         <p className="mt-10 text-xs text-zinc-400 dark:text-zinc-600">
