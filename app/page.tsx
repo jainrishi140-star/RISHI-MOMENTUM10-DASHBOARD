@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const metadata: Metadata = { title: "MOM 10 — ATH/100 EMA Avg Sharpe 10 Stock Portfolio" };
+export const metadata: Metadata = { title: "ATH/100 EMA Avg Sharpe 10 Stock Portfolio" };
 
 const SHEET_ID = "1coh8Lbbw-K1dpZm5OPHhVtFcWZbAATGu-5-9Bt2KXac"; // "Top 10 ER MOM PORTFOLIO"
 
@@ -14,7 +14,7 @@ export default function Home() {
       sheetId={SHEET_ID}
       navHistoryFile="nav-history-mom10.json"
       overweightThreshold={0.15}
-      title="MOM 10 — ATH/100 EMA Avg Sharpe 10 Stock Portfolio"
+      title="ATH/100 EMA Avg Sharpe 10 Stock Portfolio"
       rules={[
         "Universe: NSE stocks (point-in-time Nifty 500 constituents).",
         "Score: average of the annualised Sharpe ratios over 63, 126, 189 and 252 trading days (risk-free 6.5%). Stocks are ranked on this average Sharpe.",

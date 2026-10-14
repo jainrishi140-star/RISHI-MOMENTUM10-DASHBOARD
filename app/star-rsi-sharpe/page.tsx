@@ -30,14 +30,14 @@ export default function StarRsiSharpe() {
       siblingStrategies={[
         {
           key: "mom10",
-          label: "MOM 10 (ATH/100 EMA)",
+          label: "ATH/100 EMA Avg Sharpe 10",
           navHistoryFile: "nav-history-mom10.json",
           sheetId: "1coh8Lbbw-K1dpZm5OPHhVtFcWZbAATGu-5-9Bt2KXac", // "Top 10 ER MOM PORTFOLIO" -- see app/page.tsx
           color: "var(--series-5)",
         },
         {
           key: "mom20",
-          label: "MOM 20 (ATH/100 EMA)",
+          label: "ATH/100 EMA Avg Sharpe 20",
           navHistoryFile: "nav-history-mom20.json",
           sheetId: "1yU6YSzZcyAHlhH-4aFlrVNaiDOcT5afdvar1yuAaQCY", // "20/60 mom portfolio" -- see app/mom20/page.tsx
           color: "var(--series-6)",

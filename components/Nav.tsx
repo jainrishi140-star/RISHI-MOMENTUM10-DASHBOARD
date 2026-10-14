@@ -1,10 +1,10 @@
 import Link from "next/link";
 
 const ITEMS = [
-  { href: "/", label: "MOM 10 · ATH/100 EMA Avg Sharpe" },
-  { href: "/mom20", label: "MOM 20 · ATH/100 EMA Avg Sharpe" },
+  { href: "/", label: "ATH/100 EMA Avg Sharpe 10 Stock Portfolio" },
+  { href: "/mom20", label: "ATH/100 EMA Avg Sharpe 20 Stock Portfolio" },
   { href: "/star-rsi-sharpe", label: "STAR RSI SHARPE" },
-  { href: "/rishi-viraj", label: "RISHI x VIRAJ · Earnings + Price Momentum" },
+  { href: "/rishi-viraj", label: "20 Stocks Earnings & Price Momentum" },
 ];
 
 export default function Nav({ current }: { current: string }) {
