@@ -24,7 +24,7 @@ export default function Mom20() {
         "Timing: signals at Friday close, fills at the next session's open.",
         "Cash call (independent, weekly): Smallcap 100 index Supertrend(4,3) on weekly bars; when the close is below the line the whole book moves to cash until it turns green again.",
       ]}
-      subtitle="20-stock, equal-weight momentum book on ₹1,00,00,000. Selection made outside this sheet; entry frozen once at first run, whole shares, weekly-Wednesday rebalance to equal weight, benchmarked against the Nifty 500."
+      subtitle="ATH/100 EMA Avg Sharpe 20 Stock Portfolio: 20-stock, equal-weight book on ₹1,00,00,000. Selection made outside this sheet; entry frozen once at first run, whole shares, weekly-Wednesday rebalance to equal weight, benchmarked against the Nifty 500."
     />
   );
 }

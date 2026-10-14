@@ -25,7 +25,7 @@ export default function RishiViraj() {
         "Rebalance: weekly on Wednesday, back to equal weight.",
         "Benchmark: Nifty 500.",
       ]}
-      subtitle="20-slot, equal-weight book on ₹1,00,00,000. The 19 stock slots are names common to Rishi's ranked 'RISHI 20 x VIRAJ' sheet and a separate, more stringent screener sheet -- only 19 of Rishi's 20 ranks had a match, so rank 20 is held as a cash sleeve instead, accruing 6.5% p.a. Stock entry frozen once at first run, whole shares, weekly-Wednesday rebalance to equal weight, benchmarked against the Nifty 500."
+      subtitle="20 stocks selected on earnings momentum (profit after tax at an all-time high) and price momentum (ATH/100 EMA Avg Sharpe), equal-weight on ₹1,00,00,000. Only 19 of the 20 ranks had a match, so rank 20 is held as a cash sleeve instead, accruing 6.5% p.a. Stock entry frozen once at first run, whole shares, weekly-Wednesday rebalance to equal weight, benchmarked against the Nifty 500."
     />
   );
 }
