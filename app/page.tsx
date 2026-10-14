@@ -19,7 +19,7 @@ export default function Home() {
         "Universe: NSE stocks (point-in-time Nifty 500 constituents).",
         "Score: average of the annualised Sharpe ratios over 63, 126, 189 and 252 trading days (risk-free 6.5%). Stocks are ranked on this average Sharpe.",
         "Eligibility filter: close within 25% of its all-time high (close ≥ 75% of the running max close) AND close above the 100-day EMA.",
-        "Buy: top 10 ranked eligible stocks. Hold: a stock stays while it remains inside the retention rank band. Exit: stock drops out of the retention band, loses eligibility, or is 20% below its entry price (checked on decision dates).",
+        "Buy: top 10 ranked eligible stocks. Hold: a stock stays until its rank falls below 60 (10/60 band). Exit: stock drops out of the retention band, loses eligibility, or is 20% below its entry price (checked on decision dates).",
         "Sizing: 10 equal-weight slots (each 1/10 of equity), reset to equal weight at every decision date.",
         "Timing: signals at Friday close, fills at the next session's open.",
         "Cash call (independent, weekly): Smallcap 100 index Supertrend(4,3) on weekly bars; when the close is below the line the whole book moves to cash until it turns green again.",
