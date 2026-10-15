@@ -1,0 +1,39 @@
+Test,Strategy,p5,p25,p50,p75,p95
+Bootstrap: ROI per year %,Rishi TK TF,18.1899,22.0836,24.7761,27.5334,31.6428
+Bootstrap: ROI per year %,TK TF Original,18.4817,22.224,24.9245,27.7312,31.9043
+Bootstrap: max drawdown %,Rishi TK TF,12.8295,15.55,18.11,21.39,27.7405
+Bootstrap: max drawdown %,TK TF Original,12.7,15.49,17.99,21.34,27.92
+Bootstrap: profit factor,Rishi TK TF,1.4655,1.5727,1.6487,1.7277,1.8473
+Bootstrap: profit factor,TK TF Original,1.4732,1.5769,1.6542,1.7347,1.8585
+Bootstrap: total ROI %,Rishi TK TF,320.0725,388.5875,435.965,484.4825,556.792
+Bootstrap: total ROI %,TK TF Original,325.2075,391.0575,438.575,487.9625,561.3935
+One year (all history): P(losing year) %,Rishi TK TF,6.09,6.09,6.09,6.09,6.09
+One year (all history): P(losing year) %,TK TF Original,5.73,5.73,5.73,5.73,5.73
+One year (all history): P(year < 10%) %,Rishi TK TF,20.1,20.1,20.1,20.1,20.1
+One year (all history): P(year < 10%) %,TK TF Original,19.22,19.22,19.22,19.22,19.22
+One year (all history): ROI %,Rishi TK TF,-1.301,12.6,23.48,35.31,54.883
+One year (all history): ROI %,TK TF Original,-0.7705,13.01,23.85,35.83,54.9705
+One year (all history): max drawdown %,Rishi TK TF,4.44,6.14,7.82,10.15,15.11
+One year (all history): max drawdown %,TK TF Original,4.36,6.07,7.76,10.1,15.0205
+One year (recent only): P(losing year) %,Rishi TK TF,13.48,13.48,13.48,13.48,13.48
+One year (recent only): P(losing year) %,TK TF Original,13.49,13.49,13.49,13.49,13.49
+One year (recent only): P(year < 10%) %,Rishi TK TF,39.45,39.45,39.45,39.45,39.45
+One year (recent only): P(year < 10%) %,TK TF Original,39.46,39.46,39.46,39.46,39.46
+One year (recent only): ROI %,Rishi TK TF,-6.3,5.08,13.515,22.62,36.0705
+One year (recent only): ROI %,TK TF Original,-6.1005,5.12,13.5,22.43,36.311
+One year (recent only): max drawdown %,Rishi TK TF,4.2195,5.9,7.67,10.09,15.12
+One year (recent only): max drawdown %,TK TF Original,4.21,5.87,7.63,10.09,14.9405
+Reshuffle: P(max DD > 15%) %,Rishi TK TF,81.63,81.63,81.63,81.63,81.63
+Reshuffle: P(max DD > 15%) %,TK TF Original,80.5,80.5,80.5,80.5,80.5
+Reshuffle: P(max DD > 20%) %,Rishi TK TF,31.78,31.78,31.78,31.78,31.78
+Reshuffle: P(max DD > 20%) %,TK TF Original,30.47,30.47,30.47,30.47,30.47
+Reshuffle: longest losing streak (trades),Rishi TK TF,14.0,16.0,18.0,20.0,24.0
+Reshuffle: longest losing streak (trades),TK TF Original,14.0,16.0,18.0,20.0,24.0
+Reshuffle: max drawdown %,Rishi TK TF,13.15,15.66,17.96,20.96,26.7405
+Reshuffle: max drawdown %,TK TF Original,13.15,15.55,17.87,20.76,26.651
+"Stress (skip 10%, cost 0.02%/side): ROI per year %",Rishi TK TF,15.4352,16.7764,17.6359,18.4201,19.544
+"Stress (skip 10%, cost 0.02%/side): ROI per year %",TK TF Original,15.5937,16.9156,17.7897,18.6014,19.6998
+"Stress (skip 10%, cost 0.02%/side): max drawdown %",Rishi TK TF,15.76,18.94,22.06,25.98,33.91
+"Stress (skip 10%, cost 0.02%/side): max drawdown %",TK TF Original,15.68,18.87,21.83,25.8725,33.2905
+"Stress (skip 10%, cost 0.02%/side): profit factor",Rishi TK TF,1.4063,1.4436,1.4677,1.4901,1.5223
+"Stress (skip 10%, cost 0.02%/side): profit factor",TK TF Original,1.4112,1.4486,1.4728,1.4958,1.5277
