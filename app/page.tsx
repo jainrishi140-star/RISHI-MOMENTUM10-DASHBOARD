@@ -14,6 +14,7 @@ export default function Home() {
       sheetId={SHEET_ID}
       navHistoryFile="nav-history-mom10.json"
       overweightThreshold={0.15}
+      realisedTab="Realised"
       title="ATH/100 EMA Avg Sharpe 10 Stock Portfolio"
       rules={[
         "Universe: NSE stocks (point-in-time Nifty 500 constituents).",

@@ -14,6 +14,7 @@ export default function RishiViraj() {
       sheetId={SHEET_ID}
       navHistoryFile="nav-history-rishi-viraj.json"
       overweightThreshold={0.08}
+      realisedTab="Realised"
       title="20 Stocks Earnings & Price Momentum"
       rules={[
         "Book: 20 equal-weight slots (5% each) on ₹1,00,00,000, selected on earnings momentum plus price momentum.",
