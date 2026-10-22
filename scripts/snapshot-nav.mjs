@@ -61,6 +61,9 @@ function toNumber(s) {
 
 // Prices come from Yahoo Finance (NSE .NS, .BO fallback) -- NOT the sheet's
 // GOOGLEFINANCE CMP. The sheet only supplies shares and cost basis.
+const istDate = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d); // YYYY-MM-DD
+
+// Last price plus the IST date of the session it belongs to (regularMarketTime).
 async function yahooLast(sym) {
   for (const suf of [".NS", ".BO"]) {
     for (let a = 0; a < 3; a++) {
@@ -68,8 +71,8 @@ async function yahooLast(sym) {
         const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}${suf}?range=5d&interval=1d`, { headers: { "User-Agent": "Mozilla/5.0" } });
         if (res.status === 404) break;
         if (!res.ok) { await new Promise((r) => setTimeout(r, 500 * (a + 1))); continue; }
-        const px = (await res.json()).chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (px > 0) return px;
+        const meta = (await res.json()).chart?.result?.[0]?.meta;
+        if (meta?.regularMarketPrice > 0) return { px: meta.regularMarketPrice, day: istDate(new Date(meta.regularMarketTime * 1000)) };
         break;
       } catch { await new Promise((r) => setTimeout(r, 500 * (a + 1))); }
     }
@@ -84,12 +87,14 @@ async function fetchHoldingsTotal(sheetId) {
   const rows = parseCsv(await res.text());
   const headerIdx = rows.findIndex((r) => (r[0] ?? "").trim() === "Ticker");
   const lots = rows.slice(headerIdx + 1).filter((r) => (r[0] ?? "").trim() && (r[0] ?? "").trim().toUpperCase() !== "TOTAL");
-  let costBasis = 0, currentValue = 0;
+  let costBasis = 0, currentValue = 0, session = "";
   for (const r of lots) {
     costBasis += toNumber(r[5]);
-    currentValue += toNumber(r[4]) * (await yahooLast(r[0].trim().replace(/^NSE:|^BOM:|^BSE:/, "")));
+    const q = await yahooLast(r[0].trim().replace(/^NSE:|^BOM:|^BSE:/, ""));
+    currentValue += toNumber(r[4]) * q.px;
+    if (q.day > session) session = q.day;
   }
-  return { costBasis, currentValue };
+  return { costBasis, currentValue, session };
 }
 
 // Booked P&L from the optional "Realised" tab (0 if the sheet has none --
@@ -112,19 +117,18 @@ async function fetchRealisedPnl(sheetId) {
 }
 
 async function snapshotOne(strategy) {
-  const { costBasis, currentValue } = await fetchHoldingsTotal(strategy.sheetId);
+  const { costBasis, currentValue, session } = await fetchHoldingsTotal(strategy.sheetId);
   const realised = await fetchRealisedPnl(strategy.sheetId);
   const cash = START_CAPITAL - costBasis + realised;
   const nav = cash + currentValue;
 
-  // IST calendar date of the trading session being snapshotted. GitHub's cron
-  // often fires hours late (runs landing at 00:00-03:00 IST the next morning),
-  // and stamping those with the wall-clock date mislabels the session's close
-  // as the following day (and lets the next real run overwrite a day). Shift
-  // back 8h so anything before 08:00 IST still belongs to the previous day.
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
-    new Date(Date.now() - 8 * 3600 * 1000)
-  ); // YYYY-MM-DD
+  // Stamp the snapshot with the trading session the prices belong to (latest
+  // Yahoo regularMarketTime across the lots), NOT the wall-clock date: GitHub's
+  // cron often fires hours late, and on an exchange holiday (e.g. 2026-10-20)
+  // the weekday cron still runs -- a wall-clock stamp then wrote a phantom flat
+  // point that duplicated the prior session. A holiday run now just rewrites
+  // the prior session's own point with the same closes.
+  const today = session;
 
   let history = [];
   try {

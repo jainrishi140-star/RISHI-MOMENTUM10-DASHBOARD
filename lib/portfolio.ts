@@ -164,9 +164,10 @@ export function parseRealised(rows: string[][]): { total: number; rows: Realised
   return { total, rows: out };
 }
 
-// Day P&L of lots exited today: shares x (sell price - previous close). Holdings
+// Day P&L of lots exited today: net proceeds - shares x previous close. Holdings
 // no longer lists them, so without this a rebalance-day Today's P&L silently
 // loses their move and jumps the moment the sheet is updated with the swap.
+// Proceeds (not shares x sell price) so sell charges land in Today's P&L as in NAV.
 // prevClose returns null when a ticker has no Yahoo quote (move then skipped).
 export function soldTodayDayPnl(rows: RealisedRow[], prevClose: (ticker: string) => number | null): number {
   const today = todayIST();
@@ -174,7 +175,8 @@ export function soldTodayDayPnl(rows: RealisedRow[], prevClose: (ticker: string)
     .filter((r) => parseSheetDate(r.date) === today)
     .reduce((a, r) => {
       const prev = prevClose(r.ticker);
-      return prev ? a + toNumber(r.shares) * (toNumber(r.sellPrice) - prev) : a;
+      const proceeds = toNumber(r.proceeds) || toNumber(r.shares) * toNumber(r.sellPrice);
+      return prev ? a + proceeds - toNumber(r.shares) * prev : a;
     }, 0);
 }
 

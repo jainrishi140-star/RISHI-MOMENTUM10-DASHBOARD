@@ -32,11 +32,12 @@ async function one(sym: string): Promise<Mkt | null> {
             headers: { "User-Agent": "Mozilla/5.0" },
             cache: "no-store",
           });
-        // 1y daily bars for the return windows + a 1d/1m call whose meta carries
+        // 2y daily bars for the return windows (1y starts the day AFTER the 12M
+        // anchor, which left every 12M return / Health / Rank blank) + a 1d/1m call whose meta carries
         // the true previous-session close (chartPreviousClose). The daily series
         // alone is NOT safe for that: Yahoo sometimes drops a day's close (null),
         // which made "yesterday" two sessions back and day P&L wrong.
-        const [res, intra] = await Promise.all([get("range=1y&interval=1d"), get("range=1d&interval=1m")]);
+        const [res, intra] = await Promise.all([get("range=2y&interval=1d"), get("range=1d&interval=1m")]);
         if (res.status === 404) break; // not listed under this suffix
         if (!res.ok) { await new Promise((r) => setTimeout(r, 300 * (attempt + 1))); continue; }
         const intraMeta = intra.ok ? (await intra.json()).chart?.result?.[0]?.meta : null;
@@ -98,9 +99,11 @@ export async function repriceHoldings(
     const q = m.get(bare(r.ticker));
     if (!q) return { ...r, cmp: "", currentValue: "", unrealisedPnl: "", pnlPct: "", dayPnl: "", high52w: "", pctFrom52wHigh: "" };
     const shares = num(r.shares), cost = num(r.costBasis), value = shares * q.last;
-    // A lot bought today only earned (last - entry price) today, not (last - yesterday's close).
+    // A lot bought today only earned (last - what it cost) today, not (last - yesterday's
+    // close). Cost per share, not entry price: cost basis carries the buy charges, so
+    // the charges hit Today's P&L the same way they hit NAV.
     const boughtToday = parseSheetDate(r.entryDate) === todayIst;
-    const prev = boughtToday && num(r.entryPrice) > 0 ? num(r.entryPrice) : q.prev;
+    const prev = boughtToday && shares > 0 && cost > 0 ? cost / shares : q.prev;
     return {
       ...r,
       cmp: inr(q.last),
