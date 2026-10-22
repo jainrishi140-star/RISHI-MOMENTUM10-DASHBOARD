@@ -17,6 +17,7 @@ import {
   parseMomentum,
   parseRebalance,
   parseRealised,
+  soldTodayDayPnl,
   dayPct,
   type RealisedRow,
   buildNavPoints,
@@ -97,25 +98,25 @@ export default async function StrategyDashboard({
   let fetchedAt = "";
 
   try {
-    const [holdRows, momRows, rebalRows] = await Promise.all([
+    const [holdRows, momRows, rebalRows, realRows] = await Promise.all([
       fetchSheetRows(sheetId, TABS.holdings),
       fetchSheetRows(sheetId, TABS.momentum),
       fetchSheetRows(sheetId, TABS.rebalance),
+      // No booked trades readable -- fall back to an unrebalanced book.
+      fetchSheetRows(sheetId, realisedTab ?? "Realised").catch(() => null),
     ]);
     const rawHoldings = parseHoldings(holdRows);
     const rawMomentum = parseMomentum(momRows);
     const rawRebalance = parseRebalance(rebalRows);
+    if (realRows) realised = parseRealised(realRows);
+    const soldToday = realised.rows.filter((r) => parseSheetDate(r.date) === todayIST());
     // Every price below comes from Yahoo Finance only (see lib/yahoo.ts).
-    const mkt = await fetchMarket([...rawHoldings.rows, ...rawMomentum, ...rawRebalance.rows].map((r) => r.ticker));
+    const mkt = await fetchMarket([...rawHoldings.rows, ...rawMomentum, ...rawRebalance.rows, ...soldToday].map((r) => r.ticker));
     holdings = await repriceHoldings(rawHoldings, mkt);
     momentum = repriceMomentum(rawMomentum, mkt);
     rebalance = repriceRebalance(rawRebalance, holdings, mkt);
-    try {
-      realised = parseRealised(await fetchSheetRows(sheetId, realisedTab ?? "Realised"));
-    } catch {
-      // No booked trades readable -- fall back to an unrebalanced book.
-    }
-    dashboard = computeDashboard(holdings, rebalance, momentum, overweightThreshold, realised.total);
+    const soldPnl = soldTodayDayPnl(soldToday, (t) => mkt.get(t.replace(/^NSE:|^BOM:|^BSE:/, ""))?.prev ?? null);
+    dashboard = computeDashboard(holdings, rebalance, momentum, overweightThreshold, realised.total, soldPnl);
     fetchedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
   } catch (e: any) {
     error = e?.message ?? String(e);

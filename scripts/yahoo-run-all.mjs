@@ -40,7 +40,7 @@ for (const [name, id] of S) {
   const lots = h.slice(hi + 1).filter((r) => r[0]?.trim() && r[0].trim().toUpperCase() !== "TOTAL")
     .map((r) => ({ sym: r[0].trim().replace(/^NSE:|^BOM:/, ""), entry: iso(r[2]), shares: num(r[4]), cost: num(r[5]), sheetCmp: num(r[6]) }));
   const rl = await tab(id, "Realised"); let realised = 0;
-  if ((rl[0]?.[0] ?? "").trim().toUpperCase().startsWith("REALISED")) { const t = rl.find((r) => (r[0] ?? "").trim().toLowerCase().startsWith("total realised")); realised = t ? num(t[1]) : 0; }
+  if ((rl[0]?.[0] ?? "").trim().toUpperCase().startsWith("REALISED")) { const t = rl.find((r) => (r[0] ?? "").trim().toLowerCase().startsWith("total realised")); realised = t ? num(t[1]) : rl.filter((r) => iso(r[0] ?? "")).reduce((a, r) => a + num(r[7]), 0); } // label can export blank (gviz date-types col A)
   await Promise.all([...new Set(lots.map((l) => l.sym))].map(yahoo));
   const dates = [...new Set(lots.flatMap((l) => [...closes[l.sym].keys()]))].sort();
   const histPath = new URL(`../data/nav-history-${name}.json`, import.meta.url);

@@ -51,7 +51,8 @@ for (const [name, id] of Object.entries(ids)) {
   const lots = sh.slice(hi + 1).filter((r) => r[0]?.trim() && r[0].trim().toUpperCase() !== "TOTAL")
     .map((r) => ({ t: r[0].trim().replace(/^NSE:/, ""), entry: iso(r[2]), sh: num(r[4]), cost: num(r[5]) }));
   const rl = await sheet(id, "Realised"); let realised = 0;
-  if ((rl[0]?.[0] || "").toUpperCase().startsWith("REALISED")) { const t = rl.find((r) => (r[0] || "").toLowerCase().startsWith("total realised")); realised = t ? num(t[1]) : 0; }
+  // label can export blank (gviz date-types col A) -> sum the dated rows' P&L instead
+  if ((rl[0]?.[0] || "").toUpperCase().startsWith("REALISED")) { const t = rl.find((r) => (r[0] || "").toLowerCase().startsWith("total realised")); realised = t ? num(t[1]) : rl.filter((r) => iso(r[0] || "")).reduce((a, r) => a + num(r[7]), 0); }
   const cost = lots.reduce((a, l) => a + l.cost, 0);
   const fund = Math.max(0, cost - realised - 1e7);
   const path = new URL(`../data/nav-history-${name}.json`, import.meta.url);

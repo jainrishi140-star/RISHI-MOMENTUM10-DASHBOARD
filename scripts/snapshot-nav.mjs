@@ -94,6 +94,12 @@ async function fetchHoldingsTotal(sheetId) {
 
 // Booked P&L from the optional "Realised" tab (0 if the sheet has none --
 // gviz returns the first tab for an unknown name, so check the title cell).
+// gviz types column A by its majority: once dated trade rows outnumber the text
+// rows it becomes a date column and the "Total realised P&L" label exports
+// BLANK. So fall back to summing the dated rows' P&L (col H) -- same rule as
+// parseRealised in lib/portfolio.ts. Without this every rebalance's booked
+// loss/gain was dropped from the snapshot NAV.
+const DATED = /^\d{1,2}-[A-Za-z]{3}-\d{4}$/;
 async function fetchRealisedPnl(sheetId) {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Realised`;
   const res = await fetch(url);
@@ -101,7 +107,8 @@ async function fetchRealisedPnl(sheetId) {
   const rows = parseCsv(await res.text());
   if (!(rows[0]?.[0] ?? "").trim().toUpperCase().startsWith("REALISED")) return 0;
   const t = rows.find((r) => (r[0] ?? "").trim().toLowerCase().startsWith("total realised"));
-  return t ? toNumber(t[1]) : 0;
+  if (t) return toNumber(t[1]);
+  return rows.filter((r) => DATED.test((r[0] ?? "").trim())).reduce((a, r) => a + toNumber(r[7]), 0);
 }
 
 async function snapshotOne(strategy) {

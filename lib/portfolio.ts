@@ -158,8 +158,24 @@ export function parseRealised(rows: string[][]): { total: number; rows: Realised
       note: cell(rows, r, 9),
     });
   }
+  // gviz types column A by its majority, so once dated rows outnumber the text
+  // rows the "Total realised P&L" label exports blank -- hence the row sum.
   const total = totalIdx >= 0 ? toNumber(cell(rows, totalIdx, 1)) : out.reduce((a, x) => a + toNumber(x.pnl), 0);
   return { total, rows: out };
+}
+
+// Day P&L of lots exited today: shares x (sell price - previous close). Holdings
+// no longer lists them, so without this a rebalance-day Today's P&L silently
+// loses their move and jumps the moment the sheet is updated with the swap.
+// prevClose returns null when a ticker has no Yahoo quote (move then skipped).
+export function soldTodayDayPnl(rows: RealisedRow[], prevClose: (ticker: string) => number | null): number {
+  const today = todayIST();
+  return rows
+    .filter((r) => parseSheetDate(r.date) === today)
+    .reduce((a, r) => {
+      const prev = prevClose(r.ticker);
+      return prev ? a + toNumber(r.shares) * (toNumber(r.sellPrice) - prev) : a;
+    }, 0);
 }
 
 // Day % for one holding, from the sheet's Day P&L: dayPnl / (value - dayPnl)
@@ -336,13 +352,16 @@ export function computeDashboard(
   rebalance: { nextDate: string; rows: RebalanceRow[] },
   momentum: MomentumRow[],
   overweightThreshold = 0.15, // 15% on the 10-stock book; the 20-stock book uses 8% (Settings!OVERWEIGHT)
-  realisedPnl = 0
+  realisedPnl = 0,
+  // Lots sold TODAY are gone from Holdings but still moved from yesterday's
+  // close to their sell price before the exit -- see soldTodayDayPnl.
+  soldTodayPnl = 0
 ): DashboardData {
   const total = holdings.total;
   const costBasis = total ? toNumber(total.costBasis) : 0;
   const currentValue = total ? toNumber(total.currentValue) : 0;
   const unrealisedPnl = total ? toNumber(total.unrealisedPnl) : 0;
-  const dayPnl = total ? toNumber(total.dayPnl) : 0;
+  const dayPnl = (total ? toNumber(total.dayPnl) : 0) + soldTodayPnl;
 
   const { nav, portfolioReturn } = computeLiveNav(holdings, realisedPnl);
   const start = START_CAPITAL + fundedOvershoot(holdings, realisedPnl);
