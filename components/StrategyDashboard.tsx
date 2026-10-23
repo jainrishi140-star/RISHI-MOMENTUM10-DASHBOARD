@@ -73,6 +73,10 @@ export interface StrategyDashboardProps {
   realisedTab?: string;
   // Hide the Momentum Monitor / next-Rebalance tables.
   hideMonitorTables?: boolean;
+  // ISO date the book went live. Overrides Holdings' earliest Entry Date as the
+  // NAV-history cutoff -- needed once every original lot has been sold (e.g.
+  // the whole book parked in a liquid ETF), else the curve restarts at that switch.
+  bookStartDate?: string;
 }
 
 export default async function StrategyDashboard({
@@ -86,6 +90,7 @@ export default async function StrategyDashboard({
   rules = [],
   realisedTab,
   hideMonitorTables = false,
+  bookStartDate,
 }: StrategyDashboardProps) {
   let error: string | null = null;
   let dashboard: ReturnType<typeof computeDashboard> | null = null;
@@ -132,7 +137,7 @@ export default async function StrategyDashboard({
     // equity curve's anchor back to a day before the book actually existed.
     // Holdings' earliest Entry Date is ground truth for when THIS book went
     // live, so drop any snapshot older than that.
-    const earliestEntry = holdings?.rows
+    const earliestEntry = bookStartDate ?? holdings?.rows
       .map((h) => parseSheetDate(h.entryDate))
       .filter((d): d is string => d !== null)
       .sort()[0];

@@ -16,6 +16,7 @@ export default function StarRsiSharpe() {
       overweightThreshold={0.08}
       realisedTab="Realised"
       hideMonitorTables
+      bookStartDate="2026-09-17"
       title="STAR RSI SHARPE — Forward Test"
       rules={[
         "Signals: weekly Wilder RSI(50) on Friday closes; rank = 252-day Sharpe ratio (risk-free 6.5%), which needs a full 252 valid days.",
