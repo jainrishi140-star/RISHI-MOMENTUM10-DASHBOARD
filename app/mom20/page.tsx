@@ -15,6 +15,8 @@ export default function Mom20() {
       navHistoryFile="nav-history-mom20.json"
       overweightThreshold={0.08}
       realisedTab="Realised"
+      hideMonitorTables
+      bookStartDate="2026-09-02"
       title="ATH/100 EMA Avg Sharpe 20 Stock Portfolio"
       rules={[
         "Universe: NSE stocks (point-in-time Nifty 500 constituents).",
@@ -24,6 +26,7 @@ export default function Mom20() {
         "Sizing: 20 equal-weight slots (each 1/20 of equity), reset to equal weight at every decision date.",
         "Timing: signals at Friday close, fills at the next session's open.",
         "Cash call (independent, weekly): Smallcap 100 index Supertrend(4,3) on weekly bars; when the close is below the line the whole book moves to cash until it turns green again.",
+        "26-Oct-2026: all 20 stocks exited at the Fri 23-Oct closing price (none was circuit-locked that day); whole book parked in NSE:LIQUIDCASE (Zerodha Nifty 1D Rate Liquid ETF) until re-entry.",
       ]}
       subtitle="ATH/100 EMA Avg Sharpe 20 Stock Portfolio: 20-stock, equal-weight book on ₹1,00,00,000. Selection made outside this sheet; entry frozen once at first run, whole shares, weekly-Wednesday rebalance to equal weight, benchmarked against the Nifty 500."
     />
