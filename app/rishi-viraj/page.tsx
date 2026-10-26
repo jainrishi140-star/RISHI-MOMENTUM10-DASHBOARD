@@ -15,6 +15,8 @@ export default function RishiViraj() {
       navHistoryFile="nav-history-rishi-viraj.json"
       overweightThreshold={0.08}
       realisedTab="Realised"
+      hideMonitorTables
+      bookStartDate="2026-09-22"
       title="20 Stocks Earnings & Price Momentum"
       rules={[
         "Book: 20 equal-weight slots (5% each) on ₹1,00,00,000, selected on earnings momentum plus price momentum.",
@@ -25,6 +27,7 @@ export default function RishiViraj() {
         "Entry: frozen once at first run, whole shares only.",
         "Rebalance: weekly on Wednesday, back to equal weight.",
         "Benchmark: Nifty 500.",
+        "26-Oct-2026: all stocks exited at the Fri 23-Oct closing price (none was circuit-locked that day); whole book parked in NSE:LIQUIDCASE (Zerodha Nifty 1D Rate Liquid ETF) until re-entry.",
       ]}
       subtitle="20 stocks selected on earnings momentum (profit after tax at an all-time high) and price momentum (ATH/100 EMA Avg Sharpe), equal-weight on ₹1,00,00,000. Only 19 of the 20 ranks had a match, so rank 20 holds Standard Engineering Technology (SETL), bought 30-Sep-2026. Stock entry frozen once at first run, whole shares, weekly-Wednesday rebalance to equal weight, benchmarked against the Nifty 500."
     />
